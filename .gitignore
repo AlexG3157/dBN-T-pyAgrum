@@ -1,0 +1,9 @@
+makefile
+*.aux
+*.log
+*.out
+*.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
