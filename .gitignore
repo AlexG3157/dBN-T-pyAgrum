@@ -7,3 +7,4 @@ makefile
 *.fdb_latexmk
 *.bbl
 *.blg
+code/lib/__pycache__
