@@ -258,7 +258,6 @@ def display_bn(bn, filename="bn_graph"):
     print(f"Nombre d'arcs: {bn.sizeArcs()}")
     print(f"Nœuds du réseau: {bn.names()}")
 
-# Programme principal
 if __name__ == "__main__":
     # Chargement des données
     print("Chargement des données...")
