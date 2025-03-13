@@ -19,7 +19,7 @@ def split_name(name : str) -> Tuple[str,int]:
         variable is static, returns `-1` as the time slice.
     """
 
-    
+    # TODO mettre delimiteur (defaut #) 
     match = re.match(r"(.*?)(\d+)$", name)  
     if match:
         return match.group(1), int(match.group(2))  
@@ -68,7 +68,7 @@ def unrollKTBN(dbn : gum.BayesNet, n : int) -> gum.BayesNet:
     Returns:
         gum.BayesNet: The unrolled KTBN.
     """
-
+    # TODO Entree liste variables, K, et bn (fonctions deviennent methodes)
     k = get_k(dbn)
 
     bn = gum.BayesNet()
@@ -107,25 +107,32 @@ def unrollKTBN(dbn : gum.BayesNet, n : int) -> gum.BayesNet:
 
                     bn.addArc(parent_name, name)
                 else:
-
+                    # TODO meme chose pour t < k
                     raise TypeError(f"Found arc from time slice k to time slice {t_slice}!")
             else:
+
                 for t in range(k, k+n+1):
-                    bn.addArc(static_p_name+str(t-k+p_t_slice),static_name+str(t))
+                    if p_t_slice == -1:
+                        bn.addArc(parent_name, static_name+str(t))
+                    else:
+                        bn.addArc(static_p_name+str(t-k+p_t_slice),static_name+str(t))
 
     #CPT
     for node_id in dbn.nodes():
         name = dbn.variable(node_id).name()
         static_name, t_slice = split_name(name)
         if t_slice < k:
-            bn.cpt(name)[:] = dbn.cpt(name)[:]
+            bn.cpt(name).fillWith(dbn.cpt(name), bn.cpt(name).names)
         else:
 
             for t in range(k, k+n+1):
-                
-                bn.cpt(static_name+str(t))[:] = dbn.cpt(name)[:]
+
+                dict_names = {
+                p_name: p_name if (p_t_slice := split_name(p_name)[1]) == -1 
+                    else split_name(p_name)[0] + str(p_t_slice - t + k)
+                    for p_name in bn.cpt(static_name + str(t)).names
+                }
+
+                bn.cpt(static_name+str(t)).fillWith(dbn.cpt(name), dict_names)
     return bn
 
-  
-dbn = gum.fastBN("x0->x1; x0->x2<-x1 ;y0->y2<-x1 ;y1->x1")
-unrolled = unrollKTBN(dbn,2)
