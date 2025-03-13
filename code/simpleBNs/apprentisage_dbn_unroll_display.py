@@ -68,15 +68,14 @@ def discretize_data_with_agrum(data, n_bins=2, method='quantile'):
     # Création du discretizer avec les paramètres spécifiés
     discretizer = Discretizer(defaultDiscretizationMethod=method, defaultNumberOfBins=n_bins)
     
-    # Création d'un template BN avec les variables discrétisées
+    # Création d'un BN template avec les variables discrétisées
     bn_template = discretizer.discretizedTemplate(data)
     
     # Création et remplissage du DataFrame discrétisé
     discretized_data = pd.DataFrame(index=data.index, columns=data.columns)
     
-    # Discrétisation simplifiée
     for i, col in enumerate(data.columns):
-        # Récupération de la variable discrète du template
+        # Récupération de la variable discrète du BN template
         var = bn_template.variable(i)
         
         # Fonction de discrétisation qui convertit une valeur continue en indice d'intervalle
@@ -90,8 +89,7 @@ def discretize_data_with_agrum(data, n_bins=2, method='quantile'):
 
 def learn_dbn_with_slice_order(data, k=2, bn_template=None, n_bins=3):
     """Apprend un DBN avec sliceOrder pour respecter la causalité temporelle"""
-    print("\nUtilisation d'une approche manuelle pour l'apprentissage du DBN...")
-    
+        
     # Création d'un nouveau BN pour le DBN
     dbn = gum.BayesNet()
     
@@ -105,11 +103,6 @@ def learn_dbn_with_slice_order(data, k=2, bn_template=None, n_bins=3):
                 if t < k:
                     slices[t].append(col)
     
-    # Afficher les slices pour déboguer
-    print("\nSlices organisées par tranche temporelle:")
-    for i, slice_vars in enumerate(slices):
-        print(f"Slice {i}: {slice_vars}")
-    
     # Ajouter toutes les variables au DBN avec les noms originaux (avec #)
     print(f"\nAjout des variables au DBN avec {n_bins} états...")
     for t in range(k):
@@ -121,7 +114,6 @@ def learn_dbn_with_slice_order(data, k=2, bn_template=None, n_bins=3):
     # Apprendre la structure pour chaque tranche temporelle
     for t in range(k):
         print(f"\nApprentissage de la structure pour la tranche temporelle {t}...")
-        # Créer un sous-ensemble de données pour cette tranche
         slice_df = data[slices[t]]
         
         # Apprendre un BN pour cette tranche
@@ -131,7 +123,7 @@ def learn_dbn_with_slice_order(data, k=2, bn_template=None, n_bins=3):
         bn = learner.learnBN()
         
         # Ajouter les arcs intra-tranche au DBN
-        print(f"Ajout des arcs intra-tranche pour la tranche {t}...")
+        print(f"Ajout des arcs entre deux variables du meme time slice pour {t}...")
         for arc in bn.arcs():
             tail = bn.variable(arc[0]).name()
             head = bn.variable(arc[1]).name()
@@ -144,7 +136,7 @@ def learn_dbn_with_slice_order(data, k=2, bn_template=None, n_bins=3):
     
     # Ajouter des arcs inter-tranches (de t à t+1)
     if k > 1:
-        print("\nAjout d'arcs inter-tranches pour modéliser les dépendances temporelles...")
+        print("\nAjout des arcs entre deux time slices differentes... ")
         for t in range(k-1):
             for var in slices[t]:
                 base_name = var.split('#')[0]
@@ -162,53 +154,47 @@ def learn_dbn_with_slice_order(data, k=2, bn_template=None, n_bins=3):
 # Fonction pour "dérouler" (unroll) le DBN
 def unroll_dbn(dbn, k):
     """
-    Déroule un DBN en un réseau bayésien standard sur k tranches temporelles.
+    Déroule un DBN en un réseau bayésien standard sur k time slices.
     
     Args:
         dbn: Réseau bayésien dynamique
         k: Nombre de tranches temporelles
     
     Returns:
-        Réseau bayésien déroulé
+        Le DBN unroll
     """
     print(f"Déroulement du DBN sur {k} time slices...")
     
-    # Création d'un nouveau BN pour le réseau déroulé
+    # Création d'un nouveau BN pour le DBN unroll
     unrolled_bn = gum.BayesNet()
     
-    # Dictionnaire pour stocker les correspondances entre les nœuds du DBN et du BN déroulé
-    node_mapping = {}
-    
-    # Dictionnaire pour stocker les nœuds déjà créés dans le BN déroulé
+    # Dictionnaire pour stocker les nœuds déjà créés dans le DBN unroll
     created_nodes = {}
     
     # Ajout des nœuds pour chaque tranche temporelle
     for t in range(k):
         for node in dbn.names():
-            # Extraction du nom de base et de la tranche temporelle
+            # Extraction du nom de base et du time slice
             if '#' in node:
                 parts = node.split('#')
                 base_name = parts[0]
-                # Création d'un nouveau nom pour le nœud dans le BN déroulé
+                # Création d'un nouveau nom pour le nœud dans le DBN unroll
                 new_node_name = f"{base_name}#{t}"
                 
                 # Vérifier si le nœud existe déjà
                 if new_node_name not in created_nodes:
-                    # Ajout du nœud au BN déroulé avec le même nombre d'états
+                    # Ajout du nœud au BN unroll avec le même nombre d'états
                     node_id = unrolled_bn.add(new_node_name, dbn.variable(node).domainSize()) 
                     created_nodes[new_node_name] = node_id
                 else:
                     node_id = created_nodes[new_node_name]
                 
-                # Stockage de la correspondance
-                node_mapping[(node, t)] = node_id
     
     # Ajout des arcs en respectant les dépendances du DBN
     for arc in dbn.arcs():
         tail = dbn.variable(arc[0]).name()
         head = dbn.variable(arc[1]).name()
         
-        # Extraction des informations de tranche
         tail_parts = tail.split('#')
         head_parts = head.split('#')
         
@@ -220,7 +206,7 @@ def unroll_dbn(dbn, k):
                 tail_slice = int(tail_parts[1])
                 head_slice = int(head_parts[1])
                 
-                # Ajout des arcs correspondants dans le BN déroulé
+                # Ajout des arcs correspondants dans le BN unroll
                 for t in range(k-1):  # k-1 car la dernière tranche n'a pas de successeur
                     # Arcs dans la même tranche
                     if tail_slice == head_slice:
@@ -234,14 +220,13 @@ def unroll_dbn(dbn, k):
                     
                     # Arcs entre tranches consécutives
                     if head_slice > tail_slice:
-                        if t+1 < k:
-                            try:
-                                unrolled_bn.addArc(
-                                    unrolled_bn.idFromName(f"{tail_base}#{t}"), 
-                                    unrolled_bn.idFromName(f"{head_base}#{t+1}")
-                                )
-                            except:
-                                pass
+                        try:
+                            unrolled_bn.addArc(
+                                unrolled_bn.idFromName(f"{tail_base}#{t}"), 
+                                unrolled_bn.idFromName(f"{head_base}#{t+1}")
+                            )
+                        except:
+                            pass
             except:
                 print(f"Impossible de déterminer les tranches temporelles pour {tail} -> {head}")
     
@@ -255,10 +240,8 @@ def display_bn(bn, filename="bn_graph"):
     Args:
         bn: Réseau bayésien à afficher
         filename: Nom du fichier pour sauvegarder l'image
-    """
-    print(f"Affichage du réseau bayésien ({bn.size()} nœuds, {bn.sizeArcs()} arcs)...")
-    
-    # Création d'un fichier DOT pour visualisation
+    """    
+    # Pour le .dot
     dot_str = bn.toDot()
     with open(f"{filename}.dot", "w") as f:
         f.write(dot_str)
@@ -267,7 +250,7 @@ def display_bn(bn, filename="bn_graph"):
     # Utilisation de pyAgrum.lib.image pour générer une image PNG
     import pyAgrum.lib.image as gim
     gim.export(bn, f"{filename}.png")
-    print(f"Image PNG générée avec pyAgrum.lib.image: {filename}.png")
+    print(f"Image PNG générée: {filename}.png")
     
     # Affichage des informations sur le réseau
     print("\nInformations sur le réseau:")
@@ -275,50 +258,49 @@ def display_bn(bn, filename="bn_graph"):
     print(f"Nombre d'arcs: {bn.sizeArcs()}")
     print(f"Nœuds du réseau: {bn.names()}")
 
-
 # Programme principal
 if __name__ == "__main__":
     # Chargement des données
     print("Chargement des données...")
     data = pd.read_csv("DailyDelhiClimateTrain.csv")
     
-    # Prétraitement pour DBN
-    print("Prétraitement pour DBN...")
+    # Traitement de DataSet
+    print("Traitement de DataSet...")
     # Conversion des dates et tri chronologique
     data['date'] = pd.to_datetime(data['date'])
     data = data.sort_values('date')
     
-    # Sélection des variables climatiques
+    # Sélection des variables
     variables = ['meantemp', 'humidity', 'wind_speed', 'meanpressure']
     
     # Nombre de tranches temporelles
-    k = 3  # Par défaut, on utilise 3 tranches (t, t-1, t-2)
+    k = 3  # Pour le monent 3 time_slices
     
     # Génération du BN avec k tranches temporelles
     dbn_data = generate_bn_k_slices(data, variables, k)
     
-    # Afficher les colonnes pour déboguer
+    # Affichage des colonnes avant discretisation
     print("\nColonnes dans dbn_data:")
     print(dbn_data.columns.tolist())
     
-    # Discrétisation des données avec pyAgrum
-    discretized_data, bn_template = discretize_data_with_agrum(dbn_data, n_bins=3, method='quantile')
+    n_bins=3
+
+    # Discrétisation des données avec le Discretizer de pyAgrum
+    discretized_data, bn_template = discretize_data_with_agrum(dbn_data, n_bins, method='quantile')
     
-    # Afficher les colonnes après discrétisation
+    # Affichage des colonnes après discrétisation
     print("\nColonnes dans discretized_data:")
     print(discretized_data.columns.tolist())
     
-    # Apprentissage du DBN avec sliceOrder
-    print("\nApprentissage du DBN avec sliceOrder...")
-    # Utiliser la même valeur n_bins que celle utilisée pour la discrétisation
-    n_bins = 3
+    # Apprentissage du DBN
+    print("\nApprentissage du DBN...")
     dbn = learn_dbn_with_slice_order(discretized_data, k, bn_template, n_bins)
     
     # Affichage du DBN
     display_bn(dbn, "delhi_climate_dbn")
     
-    # Déroulement (unroll) du DBN
+    # Unroll le DBN
     unrolled_bn = unroll_dbn(dbn, k)
     
-    # Affichage du BN déroulé
+    # Affichage du BN unroll
     display_bn(unrolled_bn, "delhi_climate_unrolled_dbn")
