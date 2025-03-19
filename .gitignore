@@ -8,3 +8,4 @@ makefile
 *.bbl
 *.blg
 code/lib/__pycache__
+test

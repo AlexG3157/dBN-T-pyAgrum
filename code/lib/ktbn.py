@@ -3,7 +3,7 @@ import pyAgrum as gum
 import numpy as np
 from typing import Tuple
 
-def split_name(name : str) -> Tuple[str,int]:
+def split_name(name : str, delimiter : str) -> Tuple[str,int]:
     """
     Splits a dBN variable name into a static prefix and a time slice index.
 
