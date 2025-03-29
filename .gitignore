@@ -7,5 +7,7 @@ makefile
 *.fdb_latexmk
 *.bbl
 *.blg
-code/lib/__pycache__
 test
+ktbn/__pycache__
+.venv
+.vscode
