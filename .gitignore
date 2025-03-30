@@ -8,6 +8,6 @@ makefile
 *.bbl
 *.blg
 test
-ktbn/__pycache__
 .venv
 .vscode
+*__pycache__

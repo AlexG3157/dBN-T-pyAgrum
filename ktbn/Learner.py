@@ -1,7 +1,7 @@
 import pandas as pd
 import pyAgrum as gum
 from pyAgrum.lib.discretizer import Discretizer
-from typing import List, Set, Union
+from typing import List
 from typing import Tuple
 
 class Learner():
@@ -218,14 +218,14 @@ class Learner():
         
   
 
-def is_atemporal(dfs: List[pd.Series], column: Union[str, int]) -> bool:
+def is_atemporal(dfs: List[pd.Series], column: str | int) -> bool:
     """
     Checks whether a variable is atemporal, meaning it remains constant 
     across all given DataFrames.
 
     Args:
         dfs (List[pd.Series]): A list of pandas Series, each containing the column to check.
-        column (Union[str, int]): The column name or index.
+        column (str | int): The column name or index.
 
     Returns:
         bool: True if the variable is constant across all DataFrames, otherwise False.
