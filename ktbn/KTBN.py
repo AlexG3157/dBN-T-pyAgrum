@@ -177,43 +177,32 @@ class KTBN:
         # 1. VARIABLES
         
         # Add atemporal variables
-        atemporal_var_ids = {}
         for var_name in self._atemporal_variables:
             var_id = self._bn.idFromName(var_name)
             template_var = self._bn.variable(var_id)
             
-            # Creation of a new variable with the same labels and the same name
-            new_var = gum.LabelizedVariable(var_name, var_name, template_var.domainSize())
-            for i in range(template_var.domainSize()):
-                new_var.changeLabel(i, template_var.label(i))
+            # Create a new variable by cloning the template
+            new_var = template_var.clone()
+            new_var.setName(var_name)
             
             # Add the new variable to the new BN
-            new_id = unrolled_bn.add(new_var)
-            atemporal_var_ids[var_name] = new_id
+            unrolled_bn.add(new_var)
         
-        # Add temporal variables (0 to k+n)
-        temporal_var_ids = {} 
+        # Add temporal variables
         for var_name in self._temporal_variables:
-            # Utiliser la variable du time-slice k comme modèle pour toutes les variables
             template_name = self.encode_name(var_name, self._k)
             template_id = self._bn.idFromName(template_name)
             template_var = self._bn.variable(template_id)
             
-            # Initialiser le dictionnaire pour cette variable
-            temporal_var_ids[var_name] = {}
-            
             for t in range(self._k + n + 1):
-                # Créer une nouvelle variable avec les mêmes caractéristiques
+                # Create a new variable by cloning the template
+                new_var = template_var.clone()
                 new_name = self.encode_name(var_name, t)
-                new_var = gum.LabelizedVariable(new_name, new_name, template_var.domainSize())
-                for i in range(template_var.domainSize()):
-                    new_var.changeLabel(i, template_var.label(i))
+                new_var.setName(new_name)
                 
-                # Ajouter la variable au BN
-                new_id = unrolled_bn.add(new_var)
+                # Add the new variable to the new BN
+                unrolled_bn.add(new_var)
                 
-                # Stocker l'ID pour une utilisation ultérieure
-                temporal_var_ids[var_name][t] = new_id
         
         # 2. ARCS
         
@@ -274,11 +263,21 @@ class KTBN:
                     pass
         
         # 3. CPTs
-        
-        for node_id in unrolled_bn.nodes():
-            cpt = unrolled_bn.cpt(node_id)
-            cpt.fillWith(1.0)
-            cpt.normalize()
+        for node_id in self._bn.nodes():
+            name = self._bn.variable(node_id).name()
+            static_name, t_slice = self.decode_name(name)
+            if t_slice < self._k:
+                unrolled_bn.cpt(name).fillWith(self._bn.cpt(name), unrolled_bn.cpt(name).names)
+            else:
+                for t in range(self._k, self._k + n + 1):
+                    new_name = self.encode_name(static_name, t)
+                    dict_names = {
+                        p_name: p_name if (p_t_slice := self.decode_name(p_name)[1]) == -1 
+                        else self.encode_name(self.decode_name(p_name)[0], p_t_slice - t + self._k)
+                        for p_name in unrolled_bn.cpt(new_name).names
+                    }
+                    
+                    unrolled_bn.cpt(new_name).fillWith(self._bn.cpt(name), dict_names)
         
         return unrolled_bn
         
