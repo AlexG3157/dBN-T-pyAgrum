@@ -3,6 +3,7 @@ import pyAgrum as gum
 from pyAgrum.lib.discretizer import Discretizer
 from typing import List
 from typing import Tuple
+from KTBN import KTBN
 
 class Learner():
     """
@@ -25,18 +26,18 @@ class Learner():
 
             raise NotImplementedError("Learning the hyperparameter k is not yet supported!")
         
-        self.k = k
-        self.delimiter = delimiter
+        self._k = k
+        self._delimiter = delimiter
 
-        self.atemporal_vars = [col for col in dfs[0].columns if is_atemporal(dfs, col)]
-        self.temporal_vars = [col for col in dfs[0].columns if col not in self.atemporal_vars]
+        self._atemporal_vars = [col for col in dfs[0].columns if is_atemporal(dfs, col)]
+        self._temporal_vars = [col for col in dfs[0].columns if col not in self._atemporal_vars]
         
-        self.lags, self.first_rows = create_sequences(dfs, k, delimiter, self.temporal_vars, self.atemporal_vars)
+        self._lags, self._first_rows = create_sequences(dfs, k, delimiter, self._temporal_vars, self._atemporal_vars)
 
-        first_template, lags_template = create_templates(discretizer,dfs, delimiter,k, self.temporal_vars, self.atemporal_vars)
+        first_template, lags_template = create_templates(discretizer,dfs, delimiter,k, self._temporal_vars, self._atemporal_vars)
         
-        self.lags_learner = gum.BNLearner(self.lags, lags_template)
-        self.first_learner = gum.BNLearner(self.first_rows, first_template)
+        self._lags_learner = gum.BNLearner(self._lags, lags_template)
+        self._first_learner = gum.BNLearner(self._first_rows, first_template)
 
     
     def learn_ktbn(self) -> gum.BayesNet:
@@ -48,37 +49,37 @@ class Learner():
         """
 
         # Atemporal variables can't have parents.
-        for var in self.atemporal_vars:
+        for var in self._atemporal_vars:
             
-            self.first_learner.addNoParentNode(var)
-            self.lags_learner.addNoParentNode(var)
+            self._first_learner.addNoParentNode(var)
+            self._lags_learner.addNoParentNode(var)
 
         # Learn transition
-        slices = [[f'{col}{self.delimiter}{i}' for col in self.temporal_vars] for i in range(self.k)]
-        self.lags_learner.setSliceOrder(slices)
+        slices = [[KTBN.encode_name_static(col,i,self._delimiter) for col in self._temporal_vars] for i in range(self._k)]
+        self._lags_learner.setSliceOrder(slices)
 
-        lags_bn = self.lags_learner.learnBN()
+        lags_bn = self._lags_learner.learnBN()
 
 
         #Learn first time slices
-        slices = [[f'{col}{self.delimiter}{i}' for col in self.temporal_vars] for i in range(self.k-1)]
-        self.first_learner.setSliceOrder(slices)
+        slices = [[KTBN.encode_name_static(col,i,self._delimiter) for col in self._temporal_vars] for i in range(self._k-1)]
+        self._first_learner.setSliceOrder(slices)
 
-        first_bn = self.first_learner.learnBN()
+        first_bn = self._first_learner.learnBN()
         
 
         ktbn = gum.BayesNet(first_bn)
         
         # Add the variables of the last time slice
-        for col in self.temporal_vars:
+        for col in self._temporal_vars:
             
-            ktbn.add(lags_bn.variable(f'{col}{self.delimiter}{self.k-1}'))
+            ktbn.add(lags_bn.variable(KTBN.encode_name_static(col,self._k-1,self._delimiter)))
             
 
         #Add arcs
-        for col in self.temporal_vars:
+        for col in self._temporal_vars:
 
-            name = f'{col}{self.delimiter}{self.k-1}'
+            name = KTBN.encode_name_static(col,self._k-1,self._delimiter)
             parents = lags_bn.parents(name)
 
             for parent in parents:
@@ -87,13 +88,13 @@ class Learner():
                 ktbn.addArc(p_name,name)
 
         # Add atemporal cpts
-        for col in self.atemporal_vars:
+        for col in self._atemporal_vars:
 
             ktbn.cpt(col).fillWith(lags_bn.cpt(col), ktbn.cpt(col).names)
 
         # Add temporal cpts
-        for col in self.temporal_vars:
-            name = f'{col}{self.delimiter}{self.k-1}'
+        for col in self._temporal_vars:
+            name = KTBN.encode_name_static(col,self._k-1,self._delimiter)
             ktbn.cpt(name).fillWith(lags_bn.cpt(name), ktbn.cpt(name).names)
 
         return ktbn
@@ -107,7 +108,7 @@ class Learner():
             str: The delimiter.
         """
 
-        return self.delimiter
+        return self._delimiter
     
     def addMandatoryArc(self, tail : Tuple[str, int] | str, head : Tuple[str, int]):
         """
@@ -127,12 +128,12 @@ class Learner():
 
         verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self.delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self.delimiter}{head[1]}' 
-        self.lags_learner.addMandatoryArc(tail_name, head_name)
+        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
+        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        self._lags_learner.addMandatoryArc(tail_name, head_name)
         
-        if(head[1] < self.k-1):
-            self.first_learner.addMandatoryArc(tail_name, head_name)
+        if(head[1] < self._k-1):
+            self._first_learner.addMandatoryArc(tail_name, head_name)
     
     def eraseMandatoryArc(self, tail : Tuple[str, int] | str, head : Tuple[str,int]):
         """
@@ -151,12 +152,12 @@ class Learner():
 
         verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self.delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self.delimiter}{head[1]}' 
-        self.lags_learner.eraseMandatoryArc(tail_name, head_name)
+        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
+        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        self._lags_learner.eraseMandatoryArc(tail_name, head_name)
         
-        if(head[1] < self.k-1):
-            self.first_learner.eraseMandatoryArc(tail_name, head_name)
+        if(head[1] < self._k-1):
+            self._first_learner.eraseMandatoryArc(tail_name, head_name)
 
     def addForbiddenArc(self, tail : Tuple[str, int] | str, head : Tuple[str, int]):
         """
@@ -174,12 +175,12 @@ class Learner():
         """
         verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self.delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self.delimiter}{head[1]}' 
-        self.lags_learner.addForbiddenArc(tail_name, head_name)
+        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
+        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        self._lags_learner.addForbiddenArc(tail_name, head_name)
         
-        if(head[1] < self.k-1):
-            self.first_learner.addForbiddenArc(tail_name, head_name)
+        if(head[1] < self._k-1):
+            self._first_learner.addForbiddenArc(tail_name, head_name)
 
     def eraseForbiddenArc(self, tail : Tuple[str, int] | str, head : Tuple[str, int]):
         """
@@ -197,12 +198,12 @@ class Learner():
         """
         verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self.delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self.delimiter}{head[1]}' 
-        self.lags_learner.eraseForbiddenArc(tail_name, head_name)
+        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
+        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        self._lags_learner.eraseForbiddenArc(tail_name, head_name)
         
-        if(head[1] < self.k-1):
-            self.first_learner.eraseForbiddenArc(tail_name, head_name)
+        if(head[1] < self._k-1):
+            self._first_learner.eraseForbiddenArc(tail_name, head_name)
     
     def useSmoothingPrior(self, weight : float = 1):
         """
@@ -213,10 +214,19 @@ class Learner():
                 otherwise the current weight of the learner will be used.
 
         """
-        self.lags_learner.useSmoothingPrior(weight)
-        self.first_learner.useSmoothingPrior(weight)
+        self._lags_learner.useSmoothingPrior(weight)
+        self._first_learner.useSmoothingPrior(weight)
+    
+    def addNoChildrenNode(self, node : str | int):
+
+        self._first_learner.addNoChildrenNode(node)
+        self._lags_learner.addNoChildrenNode(node)
         
-  
+    def addNoParentNode(self, node : str | int):
+
+        self._first_learner.addNoParentNode(node)
+        self._lags_learner.addNoParentNode(node)
+
 
 def is_atemporal(dfs: List[pd.Series], column: str | int) -> bool:
     """

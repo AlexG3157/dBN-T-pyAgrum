@@ -34,8 +34,8 @@ class TestLearner(unittest.TestCase):
 
     def test_init_learner_valid(self):
         # Test that a Learner initializes correctly 
-        self.assertEqual(['A', 'C'], self.learner.atemporal_vars)
-        self.assertEqual(['B', 'D'], self.learner.temporal_vars)
+        self.assertEqual(['A', 'C'], self.learner._atemporal_vars)
+        self.assertEqual(['B', 'D'], self.learner._temporal_vars)
 
     def test_get_delimiter(self):
         self.assertEqual(self.learner.get_delimiter(), self.delimiter)
@@ -60,7 +60,7 @@ class TestLearner(unittest.TestCase):
     def test_create_sequences(self):
 
         lags, first = Learner.create_sequences(self.dfs, self.k, self.delimiter, 
-                                               self.learner.temporal_vars, self.learner.atemporal_vars)
+                                               self.learner._temporal_vars, self.learner._atemporal_vars)
         
         # Check that the atemporal variables are in the sequences. 
         self.assertIn('A', lags.columns)
@@ -89,12 +89,12 @@ class TestLearner(unittest.TestCase):
         ktbn = self.learner.learn_ktbn()
 
         # Check that the KTBN contains temporal variables from all time slices.
-        for col in self.learner.temporal_vars:
+        for col in self.learner._temporal_vars:
             for i in range(self.k):
                 self.assertIn(f"{col}{self.delimiter}{i}", ktbn.names())
         
         # Check that the KTBN contains atemporal variables and that they were not treated as temporal.
-        for col in self.learner.atemporal_vars:
+        for col in self.learner._atemporal_vars:
             self.assertIn(col, ktbn.names())
             for i in range(self.k):
                 self.assertFalse(f'{col}{self.delimiter}{i}' in ktbn.names())
