@@ -1,6 +1,7 @@
 
 import pyAgrum as gum
 import numpy as np
+import pandas as pd
 import re
 from typing import Tuple, List, Union, Dict, Any, Optional
 
@@ -404,3 +405,93 @@ class KTBN:
         ktbn._bn = copy.deepcopy(bn)
         
         return ktbn
+
+    def sample(self, n_trajectories : int, trajectory_len : int) -> List[pd.DataFrame]:
+        """
+        Generates a list of trajectories sampled from the ktbn.
+
+        Args:
+            n_trajectories (int): The number of trajectories to sample.
+            trajectory_len (int): The length of each trajectory.
+
+        Returns:
+            List[pd.DataFrame]: A list of data frames, each containing a sample trajectory.
+
+        ValueError
+            If `trajectory_len` is less than the order K of the KTBN.
+        """
+
+        if trajectory_len < self._k:
+            raise ValueError("Trajectory length can't be smaller than k.")
+
+        trajectories = []
+
+        vars = list(self._temporal_variables.union(self._atemporal_variables))
+        
+        dtypes = {var : str if self._bn.variable(self.encode_name(var,0)).varType() == gum.VarType_LABELIZED else int for var in self._temporal_variables}
+        dtypes.update({var : str if self._bn.variable(var).varType() == gum.VarType_LABELIZED else int for var in self._atemporal_variables})
+
+        for _ in range(n_trajectories):
+
+            df = pd.DataFrame(np.zeros((trajectory_len, len(vars))), columns = vars).astype(dtypes)
+            order = self._bn.topologicalOrder()
+            last_order = [var for var in order if self.decode_name(self._bn.variable(var).name())[1] == self._k]
+            
+            trajectory = gum.Instantiation()
+
+            # First time slices.
+            for node in order:
+                
+                var = self._bn.variable(node)
+                val = var.label(self._bn.cpt(node).extract(trajectory).draw())
+
+                trajectory.add(var)
+                trajectory[var.name()] = val
+
+                name, index = self.decode_name(var.name())
+
+                if index == -1:
+                    df[name] = dtypes[name](val)
+                else:
+                    df.loc[index, name] = dtypes[name](val)
+            
+            # Transition
+            for i in range(1,trajectory_len - self._k):
+
+                I = gum.Instantiation()
+
+                for node in last_order:
+
+                    var = self._bn.variable(node)
+                    # Add parents to instantiation 
+                    for parent in self._bn.parents(node):
+                        
+                        parent_var = self._bn.variable(parent)
+                        if I.contains(parent_var):
+                            continue
+
+                        I.add(parent_var)
+                        name, index = self.decode_name(parent_var.name())
+                        
+                        if index == -1:
+                            I[name] = trajectory[name]
+                        else :
+                            I[parent_var.name()] = trajectory[self.encode_name(name, index+i)]
+
+                    # Sample node
+                    val = var.label(self._bn.cpt(node).extract(I).draw())
+                    I.add(var)
+                    I[var.name()] = val
+                    
+                    new_var = var.clone()
+                    name, index = self.decode_name(new_var.name())
+                    new_var.setName(self.encode_name(name, index+i))
+
+                    trajectory.add(new_var)
+                    trajectory[new_var.name()] = val
+
+                    df.loc[index+i,name] = dtypes[name](val)
+
+            trajectories.append(df)
+
+        return trajectories
