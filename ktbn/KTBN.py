@@ -133,7 +133,8 @@ class KTBN:
         
         self._bn.addArc(tail_name, head_name)
     
-    def encode_name(self, variable: str, time_slice: int) -> str:
+    @staticmethod
+    def encode_name_static(variable : str, time_slice : int, delimiter : str):
         """
         Encodes a variable name and a temporal index into a complete name.
         
@@ -147,7 +148,36 @@ class KTBN:
         if time_slice == -1:
             return variable
         else:
-            return f"{variable}{self._delimiter}{time_slice}"
+            return f"{variable}{delimiter}{time_slice}"
+        
+    @staticmethod 
+    def decode_name_static(name: str, delimiter : str) -> Tuple[str, int]:
+        """
+        Decodes a complete name into variable name and temporal index.
+        
+        Args:
+            name (str): The complete name to decode
+        
+        Returns:
+            Tuple[str, int]: The name of the variable and the temporal index (-1 for atemporal variables)
+        """
+        parts = name.split(delimiter)
+        if len(parts) == 2 and parts[1].isdigit():
+            return parts[0], int(parts[1])
+        return name, -1
+    
+    def encode_name(self, variable: str, time_slice: int) -> str:
+        """
+        Encodes a variable name and a temporal index into a complete name.
+        
+        Args:
+            variable (str): The name of the variable
+            time_slice (int): The temporal index (-1 for atemporal variables)
+        
+        Returns:
+            str: The complete encoded name
+        """
+        return KTBN.encode_name_static(variable,time_slice, self._delimiter)
     
     def decode_name(self, name: str) -> Tuple[str, int]:
         """
@@ -159,10 +189,7 @@ class KTBN:
         Returns:
             Tuple[str, int]: The name of the variable and the temporal index (-1 for atemporal variables)
         """
-        parts = name.split(self._delimiter)
-        if len(parts) == 2 and parts[1].isdigit():
-            return parts[0], int(parts[1])
-        return name, -1
+        return KTBN.decode_name_static(name,self._delimiter)
     
     def unroll(self, n: int)->gum.BayesNet:
         """
