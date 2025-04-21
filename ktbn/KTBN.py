@@ -1,7 +1,6 @@
-
 import pyAgrum as gum
-import numpy as np
 import pandas as pd
+import numpy as np
 import re
 from typing import Tuple, List, Union, Dict, Any, Optional
 
@@ -67,14 +66,13 @@ class KTBN:
         
         if temporal:
             self._temporal_variables.add(var.name())
-            for i in range(self._k + 1):
+            for i in range(self._k):
                 var_clone = var.clone()
                 var_name = self.encode_name(var.name(), i)
                 
                 # Add the variable to the Bayesian network
                 var_id = self._bn.add(var_clone)
                 
-                # Change its name if necessary
                 if var_clone.name() != var_name:
                     self._bn.changeVariableName(var_id, var_name)
         else:
@@ -83,14 +81,13 @@ class KTBN:
     
     def _validate_variable(self, var_tuple: Tuple[str, int]) -> str:
         """
-        Validates a variable tuple and returns the full variable name.
+        Validates a variable
         
         Args:
             var_tuple (Tuple[str, int]): A tuple containing the variable name and time slice index
-                                     (-1 for atemporal variables)
         
         Returns:
-            str: The full variable name (encoded with delimiter if temporal)
+            str: the name of the variable encoded
             
         Raises:
             ValueError: If the variable doesn't exist, is used incorrectly, or has an invalid time slice
@@ -101,7 +98,7 @@ class KTBN:
         if var_name not in self._temporal_variables and var_name not in self._atemporal_variables:
             raise ValueError(f"The variable {var_name} does not exist")
         
-        # Validate temporal/atemporal usage and return the full name
+        # Check if the variable is indeed temporal or atemporal
         if time_slice == -1:
             if var_name in self._temporal_variables:
                 raise ValueError(f"The variable {var_name} is temporal but used as atemporal")
@@ -109,7 +106,7 @@ class KTBN:
         else:
             if var_name in self._atemporal_variables:
                 raise ValueError(f"The variable {var_name} is atemporal but used as temporal")
-            if time_slice < 0 or time_slice > self._k:
+            if time_slice < 0 or time_slice >= self._k:
                 raise ValueError(f"Invalid temporal index {time_slice} for variable {var_name}")
             return self.encode_name(var_name, time_slice)
     
@@ -209,31 +206,26 @@ class KTBN:
             var_id = self._bn.idFromName(var_name)
             template_var = self._bn.variable(var_id)
             
-            # Create a new variable by cloning the template
             new_var = template_var.clone()
             new_var.setName(var_name)
             
-            # Add the new variable to the new BN
             unrolled_bn.add(new_var)
         
         # Add temporal variables
         for var_name in self._temporal_variables:
-            template_name = self.encode_name(var_name, self._k)
+            template_name = self.encode_name(var_name, self._k - 1)  
             template_id = self._bn.idFromName(template_name)
             template_var = self._bn.variable(template_id)
             
-            for t in range(self._k + n + 1):
-                # Create a new variable by cloning the template
+            for t in range(self._k + n):  
                 new_var = template_var.clone()
                 new_name = self.encode_name(var_name, t)
                 new_var.setName(new_name)
                 
-                # Add the new variable to the new BN
                 unrolled_bn.add(new_var)
                 
         
         # 2. ARCS
-        
         intra_slice_arcs = []  
         inter_slice_arcs = []  
         atemporal_arcs = []    
@@ -248,7 +240,7 @@ class KTBN:
             
             # Case 1: Arc from an atemporal variable
             if tail_time == -1 and head_time != -1:
-                atemporal_arcs.append((tail_var, head_var))
+                atemporal_arcs.append((tail_var, head_var, head_time))
             
             # Case 2: Arc between two consecutive time slices 
             elif tail_time != -1 and head_time != -1 and head_time == tail_time + 1:
@@ -260,51 +252,70 @@ class KTBN:
         
         # Add arcs between two variables in the same time slice
         for tail_var, head_var, time_slice in intra_slice_arcs:
-            for t in range(self._k + n + 1):
+            # Add originals arcs (for time slices 0 to k-1)
+            for t in range(self._k):
                 tail_name = self.encode_name(tail_var, t)
                 head_name = self.encode_name(head_var, t)
-                try:
+                if self._bn.existsArc(tail_name, head_name):
                     unrolled_bn.addArc(tail_name, head_name)
-                except:
-                    # It means that the arc already exists
-                    pass
+            
+            # Vérifier s'il y a un arc dans la dernière tranche
+            last_slice_tail_name = self.encode_name(tail_var, self._k - 1)
+            last_slice_head_name = self.encode_name(head_var, self._k - 1)
+            if self._bn.existsArc(last_slice_tail_name, last_slice_head_name):
+                # Si oui, ajouter des arcs similaires pour les nouvelles tranches
+                for t in range(self._k, self._k + n):
+                    new_tail_name = self.encode_name(tail_var, t)
+                    new_head_name = self.encode_name(head_var, t)
+                    unrolled_bn.addArc(new_tail_name, new_head_name)
+
         
         # Add arcs between two consecutive time slices
         for tail_var, head_var in inter_slice_arcs:
-            for t in range(self._k + n):
+            for t in range(self._k + n - 1):  # Modifier ici : k+n-1 au lieu de k+n
                 tail_name = self.encode_name(tail_var, t)
                 head_name = self.encode_name(head_var, t + 1)
-                try:
-                    unrolled_bn.addArc(tail_name, head_name)
-                except:
-                    # It means that the arc already exists
-                    pass
+                unrolled_bn.addArc(tail_name, head_name)
         
         # Add arcs from atemporal variables
-        for tail_var, head_var in atemporal_arcs:
-            for t in range(self._k + n + 1):  
+        for tail_var, head_var, head_time in atemporal_arcs:
+            # Add originals arcs
+            for t in range(self._k):
                 head_name = self.encode_name(head_var, t)
-                try:
+                if self._bn.existsArc(tail_var, head_name):
                     unrolled_bn.addArc(tail_var, head_name)
-                except:
-                    # It means that the arc already exists
-                    pass
-        
+            
+            # 2. Vérifier s'il y a un arc entre la variable atemporelle et la variable temporelle dans la dernière tranche
+            last_slice_head_name = self.encode_name(head_var, self._k - 1)
+            if self._bn.existsArc(tail_var, last_slice_head_name):
+                # Si oui, ajouter des arcs similaires pour les nouvelles tranches
+                for t in range(self._k, self._k + n):
+                    new_head_name = self.encode_name(head_var, t)
+                    unrolled_bn.addArc(tail_var, new_head_name)
+                
         # 3. CPTs
         for node_id in self._bn.nodes():
             name = self._bn.variable(node_id).name()
             static_name, t_slice = self.decode_name(name)
+
+            #if name == "B#1":
+            #    print(f"Parents de B#1 dans le réseau original : {[self._bn.variable(p).name() for p in self._bn.parents('B#1')]}")
+            #    print(f"Parents de B#1 dans le réseau déroulé : {[unrolled_bn.variable(p).name() for p in unrolled_bn.parents('B#1')]}")
+
             if t_slice < self._k:
+                #print("cas 1 ")
+                #print(f"Copie CPT {name} -> {name}: source {self._bn.cpt(name).domainSize()}, dest {unrolled_bn.cpt(name).domainSize()}")
                 unrolled_bn.cpt(name).fillWith(self._bn.cpt(name), unrolled_bn.cpt(name).names)
             else:
-                for t in range(self._k, self._k + n + 1):
+                for t in range(self._k, self._k + n):
                     new_name = self.encode_name(static_name, t)
                     dict_names = {
                         p_name: p_name if (p_t_slice := self.decode_name(p_name)[1]) == -1 
                         else self.encode_name(self.decode_name(p_name)[0], p_t_slice - t + self._k)
                         for p_name in unrolled_bn.cpt(new_name).names
                     }
-                    
+                    #print("cas 2")
+                    #print(f"Copie CPT {name} -> {new_name}: source {self._bn.cpt(name).domainSize()}, dest {unrolled_bn.cpt(new_name).domainSize()}")
                     unrolled_bn.cpt(new_name).fillWith(self._bn.cpt(name), dict_names)
         
         return unrolled_bn
@@ -325,10 +336,10 @@ class KTBN:
     
     def to_bn(self) -> gum.BayesNet:
         """
-        Returns a deep copy of the underlying Bayesian network.
+        Returns a deep copy of the underlying BN
         
         Returns:
-            gum.BayesNet: A deep copy of the Bayesian network
+            gum.BayesNet: deep copy of the BN
         """
         import copy
         return copy.deepcopy(self._bn)
@@ -339,7 +350,7 @@ class KTBN:
         Saves the KTBN in BIFXML format.
         
         Args:
-            filename (str): the filename (with or without .bifxml extension)
+            filename (str): the filename
         """
         if not filename.endswith('.bifxml'):
             filename += '.bifxml'
@@ -381,7 +392,7 @@ class KTBN:
             else:
                 atemporal_variables.add(name)
         
-        k = max_time_slice
+        k = max_time_slice + 1  # k est le nombre de tranches, pas l'indice maximal
         
         ktbn = cls(k=k, delimiter=delimiter)
         ktbn._temporal_variables = temporal_variables
@@ -396,38 +407,34 @@ class KTBN:
         Creates a KTBN from an existing Bayesian network.
         
         Args:
-            bn (gum.BayesNet): The Bayesian network to convert to KTBN
-            delimiter (str, optional): The delimiter to use to separate variable names 
-                                      from temporal indices. Default '#'.
+            bn (gum.BayesNet): The Bayesian network that needs to be converted to a KTBN
+            delimiter (str, optional): delimiter
         
         Returns:
             KTBN: A new instance of KTBN
         """
-        # Analysis of variable names to identify temporal and atemporal variables
         temporal_variables = set()
         atemporal_variables = set()
         max_time_slice = 0
         
+        temp_ktbn = cls(k=0, delimiter=delimiter)
+        
         for node_id in bn.nodes():
             name = bn.variable(node_id).name()
-            parts = name.split(delimiter)
+            base_name, time_slice = temp_ktbn.decode_name(name)
             
-            if len(parts) == 2 and parts[1].isdigit():
-                base_name = parts[0]
-                time_slice = int(parts[1])
+            if time_slice == -1:
+                atemporal_variables.add(base_name)
+            else:
                 temporal_variables.add(base_name)
                 max_time_slice = max(max_time_slice, time_slice)
-            else:
-                atemporal_variables.add(name)
         
-        k = max_time_slice
+        k = max_time_slice + 1  # k est le nombre de tranches, pas l'indice maximal
         
-        # Creation of a new KTBN instance
+        # Creation of a new KTBN
         ktbn = cls(k=k, delimiter=delimiter)
         ktbn._temporal_variables = temporal_variables
         ktbn._atemporal_variables = atemporal_variables
-        
-        # Using a deep copy of the Bayesian network
         import copy
         ktbn._bn = copy.deepcopy(bn)
         
@@ -522,3 +529,149 @@ class KTBN:
             trajectories.append(df)
 
         return trajectories
+        
+        
+    def _get_value_from_trajectory(self, trajectory, var_base, time_slice):
+        """
+        Retrieves the value of a variable from a trajectory.
+        
+        Args:
+            trajectory (pd.DataFrame): The trajectory
+            var_base (str): The base name of the variable
+            time_slice (int): The time slice (-1 for atemporal variables)
+            
+        Returns:
+            The value of the variable at the given time slice
+        """
+        if time_slice == -1:
+            return trajectory.loc[0, var_base]
+        else:
+            return trajectory.loc[time_slice, var_base]
+    
+    def _get_var_index(self, variable: gum.DiscreteVariable, value) -> int:
+        """
+        Converts a value to its corresponding index in a variable.
+        
+        Args:
+            variable (gum.DiscreteVariable): The variable
+            value: The observed value
+            
+        Returns:
+            int: The index corresponding to the value
+        """
+        if variable.varType() == gum.VarType_LABELIZED:
+            return variable.indexOf(str(value))
+        else:
+            return int(value)
+    
+    def prepare_for_learner(self, trajectories: List[pd.DataFrame]) -> List[pd.DataFrame]:
+        """
+        Prepares trajectories for learning with the Learner class.
+        
+        Ensures that each variable has at least two unique values across all trajectories,
+        which is required by PyAgrum for learning valid discrete variables.
+        
+        Args:
+            trajectories (List[pd.DataFrame]): Trajectories generated by sample()
+            
+        Returns:
+            List[pd.DataFrame]: Trajectories prepared for Learner
+        """
+        if not trajectories:
+            return []
+            
+        prepared_dfs = []
+        
+        # Identify variables with only one unique value
+        single_value_vars = {}
+        
+        for col in trajectories[0].columns:
+            all_unique_values = set()
+            for traj in trajectories:
+                all_unique_values.update(traj[col].unique())
+            
+            if len(all_unique_values) == 1:
+                single_value_vars[col] = list(all_unique_values)[0]
+        
+        # Prepare each trajectory
+        for i, trajectory in enumerate(trajectories):
+            df = trajectory.copy()
+            
+            # Add variability to single-value variables
+            for col in single_value_vars:
+                if i % 2 == 1:  # Only modify half of the trajectories
+                    other_value = (single_value_vars[col] + 1) % 2
+                    df.loc[len(df)-1, col] = other_value
+            
+            prepared_dfs.append(df)
+        
+        return prepared_dfs
+    
+    def log_likelihood(self, trajectories: List[pd.DataFrame]) -> float:
+        """
+        Compute the log-likelihood of a list of trajectories given a KTBN
+        
+        Args:
+            trajectories (List[pd.DataFrame]): List of trajectories from sample()
+            
+        Returns:
+            float: Log-likelihood value
+        """
+        if not trajectories:
+            return 0.0
+        
+        total_log_likelihood = 0.0
+        
+        for trajectory in trajectories:
+            trajectory_log_likelihood = 0.0
+            
+            # For each variable in the BN
+            for node_id in self._bn.nodes():
+                var = self._bn.variable(node_id)
+                var_name = var.name()
+                var_base, var_time = self.decode_name(var_name)
+                
+                # If the variable belongs to a time slice that doesn't exist in the trajectory
+                if var_time != -1 and var_time >= len(trajectory):
+                    continue
+                
+                # Creation of an instanciation for the parents
+                inst = gum.Instantiation()
+                
+                # Ajouter les parents à l'instanciation
+                for parent_id in self._bn.parents(node_id):
+                    parent_var = self._bn.variable(parent_id)
+                    parent_name = parent_var.name()
+                    parent_base, parent_time = self.decode_name(parent_name)
+                    
+                    if parent_time != -1 and parent_time >= len(trajectory):
+                        continue
+                    
+                    inst.add(parent_var)
+                    
+                    # Get the value of the parent in the trajectory
+                    parent_value = self._get_value_from_trajectory(trajectory, parent_base, parent_time)
+                    
+                    # Convert the value into index using the helper method
+                    inst[parent_name] = self._get_var_index(parent_var, parent_value)
+                
+                # Add the variable to the instantiation
+                inst.add(var)
+                
+                # Get the value of the variable in the trajectory
+                var_value = self._get_value_from_trajectory(trajectory, var_base, var_time)
+                
+                # Convert the value into index using the helper method
+                inst[var_name] = self._get_var_index(var, var_value)
+                
+                # Compute the probability of the variable knowing it's parents 
+                cpt = self._bn.cpt(node_id)
+                prob = cpt[inst]
+                
+                # A probability equals to 0 is replaced by 1e-6
+                prob = max(prob, 1e-6)  
+                trajectory_log_likelihood += np.log(prob)
+            
+            total_log_likelihood += trajectory_log_likelihood
+        
+        return total_log_likelihood
