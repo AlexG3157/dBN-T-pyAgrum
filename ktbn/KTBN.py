@@ -1,3 +1,4 @@
+import random
 import pyAgrum as gum
 import pandas as pd
 import numpy as np
@@ -530,7 +531,62 @@ class KTBN:
 
         return trajectories
         
+    @staticmethod
+    def random(k : int, n_vars : int, n_mods : int, n_arcs : int, delimiter = '#') -> 'KTBN':
+        """
+        Generates a random KTBN with hyperparameter k, n_vars number of variables
+        with each n_mods number of modalities.
         
+        Args :
+            k (int): The k of the KTBN
+            n_vars (int): The number of variables per time slice.
+            n_mods (int): The number of modalities for each variable.
+            n_arcs (int): The total number of arcs.
+            delimiter (str): The delimiter to use for encoding variable names.
+        
+        Returns:
+            KTBN: A random KTBN with the specified parameters.
+        """
+        # Check if the number of arcs is valid    
+        if n_arcs > n_vars **2 * (k + 1) * (k + 2) // 2 - (n_vars * (k + 1)):
+
+            raise ValueError("Too many arcs requested.")
+        
+        ktbn = KTBN(k,delimiter)
+
+        # Add atemporal variables
+        for i in range(n_vars):
+            var = gum.RangeVariable(f"X{i}", f"variable{i}",1, n_mods)
+            ktbn.addVariable(var, True)
+
+        arcs = set()
+        while len(arcs) < n_arcs:
+
+            # Randomly select two variables to create an arc between
+            head = random.randint(0, n_vars - 1), random.randint(0, k - 1)
+            tail = random.randint(0, n_vars - 1), random.randint(0, k - 1)
+
+            if head == tail:
+                continue
+
+            # Ensure that the arc is directed from the past to the future time slice.
+            if head[1] < tail[1]:
+
+                bubble = head
+                head = tail
+                tail = bubble 
+            # Ensure that the arc is not already present
+            if (head, tail) in arcs:
+                continue
+            arcs.add((head, tail))
+
+            ktbn.addArc( (f"X{tail[0]}", tail[1]), (f"X{head[0]}", head[1]) )
+
+        return ktbn
+                
+            
+    
+
     def _get_value_from_trajectory(self, trajectory, var_base, time_slice):
         """
         Retrieves the value of a variable from a trajectory.
