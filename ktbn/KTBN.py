@@ -470,7 +470,7 @@ class KTBN:
 
             df = pd.DataFrame(np.zeros((trajectory_len, len(vars))), columns = vars).astype(dtypes)
             order = self._bn.topologicalOrder()
-            last_order = [var for var in order if self.decode_name(self._bn.variable(var).name())[1] == self._k]
+            last_order = [var for var in order if self.decode_name(self._bn.variable(var).name())[1] == self._k-1]
             
             trajectory = gum.Instantiation()
 
@@ -491,7 +491,7 @@ class KTBN:
                     df.loc[index, name] = dtypes[name](val)
             
             # Transition
-            for i in range(1,trajectory_len - self._k):
+            for i in range(1,trajectory_len - self._k + 1):
 
                 I = gum.Instantiation()
 
@@ -548,13 +548,13 @@ class KTBN:
             KTBN: A random KTBN with the specified parameters.
         """
         # Check if the number of arcs is valid    
-        if n_arcs > n_vars **2 * (k + 1) * (k + 2) // 2 - (n_vars * (k + 1)):
+        if n_arcs >(k+1)/2 * (n_vars*(n_vars-1) + k * n_vars**2):
 
             raise ValueError("Too many arcs requested.")
         
         ktbn = KTBN(k,delimiter)
 
-        # Add atemporal variables
+        # Add variables
         for i in range(n_vars):
             var = gum.RangeVariable(f"X{i}", f"variable{i}",1, n_mods)
             ktbn.addVariable(var, True)
@@ -578,9 +578,25 @@ class KTBN:
             # Ensure that the arc is not already present
             if (head, tail) in arcs:
                 continue
-            arcs.add((head, tail))
 
-            ktbn.addArc( (f"X{tail[0]}", tail[1]), (f"X{head[0]}", head[1]) )
+            try:
+                ktbn.addArc( (f"X{tail[0]}", tail[1]), (f"X{head[0]}", head[1]) )
+                arcs.add((head, tail))
+            except gum.InvalidDirectedCycle:
+                continue
+            
+        #Add random cpts
+        for v in ktbn._temporal_variables:
+            for i in range(k):
+                
+                cpt = np.random.random(ktbn.cpt(v,i).shape)
+
+                # Normalize depending on the shape
+                if len(ktbn.cpt(v,i).shape) ==1:
+                    cpt/=cpt.sum()
+                else:
+                    cpt/=cpt.sum(axis=1,keepdims=True)
+                ktbn.cpt(v,i).fillWith(cpt.ravel().tolist())
 
         return ktbn
                 
