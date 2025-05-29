@@ -46,13 +46,11 @@ class KLearner:
         # No need to add variables, just to use prepare_for_learner
         temp_ktbn = KTBN(k=1, delimiter=self.delimiter)
         
-        # Prepare trajectories once for all k values
-        prepared_dfs = temp_ktbn.prepare_for_learner(self.trajectories)
         
-        for k in range(1, max_k + 1):
+        for k in range(2, max_k + 1):
             # Pass prepared data directly to Learner
             # Learner will detect temporal vs. atemporal variables automatically
-            learner = Learner(prepared_dfs, self.discretizer, delimiter=self.delimiter, k=k)
+            learner = Learner(self.trajectories, self.discretizer, delimiter=self.delimiter, k=k)
             bn = learner.learn_ktbn()
             ktbn = KTBN.from_bn(bn, self.delimiter)
             

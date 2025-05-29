@@ -1,6 +1,7 @@
 import pyAgrum as gum
 import pyAgrum.lib.notebook as gnb
 from KTBN import KTBN
+import pydot as dot
 
 # Functions for displaying KTBN in notebooks
 def show_ktbn(ktbn, **kwargs):

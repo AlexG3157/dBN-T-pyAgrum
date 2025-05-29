@@ -43,23 +43,23 @@ class TestLearner(unittest.TestCase):
     def test_verify_timeslice_valid(self):
         # Verify that a valid time slice order does not raise an error.
         try:
-            Learner.verify_timeslice(1, 2)
+            Learner._verify_timeslice(1, 2)
         except ValueError:
             self.fail("verify_timeslice raised ValueError unexpectedly for valid input.")
 
     def test_verify_timeslice_invalid(self):
         # Verify that an invalid time slice (arc from future to past) raises ValueError.
         with self.assertRaises(ValueError):
-            Learner.verify_timeslice(2, 1)
+            Learner._verify_timeslice(2, 1)
 
     def test_is_atemporal(self):
 
-        self.assertTrue(Learner.is_atemporal(self.dfs, 'A'))
-        self.assertFalse(Learner.is_atemporal(self.dfs, 'B'))
+        self.assertTrue(Learner._is_atemporal(self.dfs, 'A'))
+        self.assertFalse(Learner._is_atemporal(self.dfs, 'B'))
 
     def test_create_sequences(self):
 
-        lags, first = Learner.create_sequences(self.dfs, self.k, self.delimiter, 
+        lags, first = Learner._create_sequences(self.dfs, self.k, self.delimiter, 
                                                self.learner._temporal_vars, self.learner._atemporal_vars)
         
         # Check that the atemporal variables are in the sequences. 

@@ -344,7 +344,6 @@ class KTBN:
         """
         import copy
         return copy.deepcopy(self._bn)
-
     
     def save(self, filename: str) -> None:
         """
@@ -600,7 +599,15 @@ class KTBN:
 
         return ktbn
                 
-            
+    def id_from_name(self, name : str, time_slice : int = -1):
+        """
+        Returns the variable's id given its name and its time slice.
+
+        Args:
+            name (str): The name of the variable
+            time_slice (int, optional): The time slice of the variable, -1 for atemporal. Defaults to -1.
+        """
+        return self._bn.idFromName(self.encode_name(name, time_slice))
     
 
     def _get_value_from_trajectory(self, trajectory, var_base, time_slice):
@@ -631,10 +638,7 @@ class KTBN:
         Returns:
             int: The index corresponding to the value
         """
-        if variable.varType() == gum.VarType_LABELIZED:
-            return variable.indexOf(str(value))
-        else:
-            return int(value)
+        return variable.labels().index(str(value))
     
     def prepare_for_learner(self, trajectories: List[pd.DataFrame]) -> List[pd.DataFrame]:
         """
@@ -749,6 +753,7 @@ class KTBN:
                 var_value = self._get_value_from_trajectory(trajectory, var_base, var_time)
                 
                 # Convert the value into index using the helper method
+                inst[var_name] = 0
                 inst[var_name] = self._get_var_index(var, var_value)
                 
                 # Compute the probability of the variable knowing it's parents 
