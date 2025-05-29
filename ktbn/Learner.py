@@ -1,7 +1,7 @@
 import pandas as pd
 import pyAgrum as gum
 from pyAgrum.lib.discretizer import Discretizer
-from typing import List
+from typing import List, Set
 from typing import Tuple
 from KTBN import KTBN
 
@@ -29,15 +29,15 @@ class Learner():
         self._k = k
         self._delimiter = delimiter
 
-        self._atemporal_vars = [col for col in dfs[0].columns if is_atemporal(dfs, col)]
+        self._atemporal_vars = [col for col in dfs[0].columns if _is_atemporal(dfs, col)]
         self._temporal_vars = [col for col in dfs[0].columns if col not in self._atemporal_vars]
         
-        self._lags, self._first_rows = create_sequences(dfs, k, delimiter, self._temporal_vars, self._atemporal_vars)
+        self._lags, self._first_rows = _create_sequences(dfs, k, delimiter, self._temporal_vars, self._atemporal_vars)
 
-        first_template, lags_template = create_templates(discretizer,dfs, delimiter,k, self._temporal_vars, self._atemporal_vars)
+        self._first_template, self._lags_template = _create_templates(discretizer,dfs, delimiter,k, self._temporal_vars, self._atemporal_vars)
         
-        self._lags_learner = gum.BNLearner(self._lags, lags_template)
-        self._first_learner = gum.BNLearner(self._first_rows, first_template)
+        self._lags_learner = gum.BNLearner(self._lags, self._lags_template)
+        self._first_learner = gum.BNLearner(self._first_rows, self._first_template)
 
     
     def learn_ktbn(self) -> gum.BayesNet:
@@ -99,7 +99,6 @@ class Learner():
 
         return ktbn
 
-
     def get_delimiter(self) -> str:
         """
         Returns the delimiter used to separate variable names from time slices.
@@ -126,13 +125,12 @@ class Learner():
             pyAgrum.InvalidDetectedCycle: If adding the arc creates a directed cycle in the graph.
         """
 
-        verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
+        _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.addMandatoryArc(tail_name, head_name)
         
-        if(head[1] < self._k-1):
+        if(head[1] < self._k - 1):
             self._first_learner.addMandatoryArc(tail_name, head_name)
     
     def eraseMandatoryArc(self, tail : Tuple[str, int] | str, head : Tuple[str,int]):
@@ -150,13 +148,12 @@ class Learner():
             ValueError: If the arc violates time slice constraints (i.e., points from future to past).
         """
 
-        verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
+        _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.eraseMandatoryArc(tail_name, head_name)
         
-        if(head[1] < self._k-1):
+        if(head[1] < self._k - 1):
             self._first_learner.eraseMandatoryArc(tail_name, head_name)
 
     def addForbiddenArc(self, tail : Tuple[str, int] | str, head : Tuple[str, int]):
@@ -173,13 +170,12 @@ class Learner():
         Raises:
             ValueError: If the arc violates time slice constraints (i.e., points from future to past).
         """
-        verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
+        _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.addForbiddenArc(tail_name, head_name)
         
-        if(head[1] < self._k-1):
+        if(head[1] < self._k - 1):
             self._first_learner.addForbiddenArc(tail_name, head_name)
 
     def eraseForbiddenArc(self, tail : Tuple[str, int] | str, head : Tuple[str, int]):
@@ -196,13 +192,12 @@ class Learner():
         Raises:
             ValueError: If the arc violates time slice constraints (i.e., points from future to past).
         """
-        verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
+        _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
-        tail_name = f'{tail[0]}{self._delimiter}{tail[1]}' if type(tail) == tuple else tail
-        head_name = f'{head[0]}{self._delimiter}{head[1]}' 
+        tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.eraseForbiddenArc(tail_name, head_name)
         
-        if(head[1] < self._k-1):
+        if(head[1] < self._k - 1):
             self._first_learner.eraseForbiddenArc(tail_name, head_name)
     
     def useSmoothingPrior(self, weight : float = 1):
@@ -217,18 +212,310 @@ class Learner():
         self._lags_learner.useSmoothingPrior(weight)
         self._first_learner.useSmoothingPrior(weight)
     
-    def addNoChildrenNode(self, node : str | int):
+    def addNoChildrenNode(self, node : Tuple[str,int]):
+        """
+        Adds a constraint preventing the given node from having any children.
 
-        self._first_learner.addNoChildrenNode(node)
-        self._lags_learner.addNoChildrenNode(node)
+        Args:
+            node (Tuple[str,int]): The node to constrain, as (name, time slice).
+        """
+        name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
+        self._lags_learner.addNoChildrenNode(name)
+
+        if node[1] < self._k - 1:
+            self._first_learner.addNoChildrenNode(name)
         
-    def addNoParentNode(self, node : str | int):
+    def addNoParentNode(self, node : Tuple[str,int]):
+        """
+        Adds a constraint preventing the given node from having any parents. 
 
-        self._first_learner.addNoParentNode(node)
-        self._lags_learner.addNoParentNode(node)
+        Args:
+            node (Tuple[str,int]): The node to constraint, as (name, time slice).
+        """
+        name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
+        self._lags_learner.addNoParentNode(name)
+
+        if node[1] < self._k - 1:
+            self._first_learner.addNoParentNode(name)
+
+    def addPossibleEdge(self, tail : Tuple[str,int], head : Tuple[str,int]):
+        """
+        Adds a possible edge from `tail` to `head` in the KTBN structure.
+
+        Args:
+            tail (str | int): The parent variable, either static (str) or time-dependent (int).
+            head (str | int): The child variable, either static (str) or time-dependent (int).
+        """
+        tail_name, head_name = self._encode_head_tail(tail, head)
+        self._lags_learner.addPossibleEdge(tail_name, head_name)
+
+        if head[1] < self.k - 1:
+            self._first_learner.addPossibleEdge(tail_name, head_name)
+
+    def eraseNoChildrenNode(self, node : Tuple[str,int]):
+        """
+        Removes the constraint preventing the given node from having any children.
+
+        Args:
+            node (Tuple[str, int]): The node whose constraint should be removed, as (name, time slice). 
+        """
+        
+        name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
+        self._lags_learner.eraseNoChildrenNode(name)
+        if node[1] < self._k -1:
+            self._first_learner.eraseNoChildrenNode(name)
+    
+    def eraseNoParentNode(self, node : Tuple[str,int]):
+        """
+        Removes the constraint preventing the given node from having any parents.
+
+        Args:
+            node (Tuple[str,int]): The node whose constraint should be removed, as (name, time slice). 
+        """
+        
+        name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
+        self._lags_learner.eraseNoParentNode(name)
+        if node[1] < self._k - 1:
+            self._first_learner.eraseNoParentNode(name)
+
+    def erasePossibleEdge(self, tail : Tuple[str, int], head : Tuple[str,int]):
+        """
+        Removes the possible edge between tail and head. 
+
+        Args:
+            tail (Tuple[str, int] | str): A node (name, time slice)
+            head (Tuple[str,int]): A node (name, time slice)
+        """
+
+        tail_name, head_name = self._encode_head_tail(tail, head)
+        self._lags_learner.erasePossibleEdge(tail_name, head_name)
+
+        if head[1] < self.k - 1:
+            self._first_learner.erasePossibleEdge(tail_name, head_name)
+
+    def isScoreBased(self) ->bool:
+        """
+        Return wether the current learning method is score-based or not.
+        """
+        return self._first_learner.isScoreBased()
+    
+    def isConstraintBased(self) ->bool:
+        """
+        Return wether the current learning method is score-based or not.
+        """
+        return self._first_learner.isConstraintBased()
+    
+    def names(self)->List[str]:
+        """
+        Returns:
+            List[str]: the names of the variables in the database.
+        """
+        return self._atemporal_vars+self._temporal_vars
+
+    def nbCols(self)->int:
+        """
+        Returns:
+            int: The number of columns in the database.
+        """
+        return len(self._atemporal_vars)+len(self._temporal_vars)
+    
+    def setMaxIndegree(self, max_indegree : int):
+        """
+        Sets the limit of the number of parents.
+        Args:
+            max_indegree (int): The limit number of parents. 
+        """
+        self._first_learner.setMaxIndegree(max_indegree)
+        self._lags_learner.setMaxIndegree(max_indegree)
+
+    def setPossibleEdges(self, edges : Set[Tuple[Tuple[str, int], Tuple[str, int]]]):
+        """
+        Sets the fixed set of possible edges.
+
+        Each edge is a tuple of two (variable, time slice) pairs: (tail, head).
+
+        Args:
+            edges (Set[Tuple[Tuple[str, int], Tuple[str, int]]]): 
+                A set of edges represented as ((tail_var, tail_time), (head_var, head_time)) tuples.
+        """
+
+        first_id_set = set()
+        lags_id_set = set()
+
+        for (tail, head) in edges:
+
+            tail_name, head_name = self._encode_head_tail(tail, head)
+
+            if tail[1] < self._k - 1 and head[1] < self._k - 1:
+                
+                tail_id = self._first_template.idFromName(tail_name)
+                head_id = self._first_template.idFromName(head_name)
+
+                first_id_set.add((tail_id, head_id))
+            
+
+            tail_id = self._lags_template.idFromName(tail_name)
+            head_id = self._lags_template.idFromName(head_name)
+
+            lags_id_set.add((tail_id, head_id))
+
+        self._first_learner.setPossibleEdges(first_id_set)
+        self._lags_learner.setPossibleEdges(lags_id_set)
+   
+    def setPossibleSkeleton(self, skeleton : gum.UndiGraph):
+        """
+        Sets the fixed skeleton, given as an undirected graph.
+
+        Args:
+            skeleton (gum.UndiGraph): The skeleton as a `gum.UndiGraph`
+        """
+        edges = skeleton.edges()
+        first = {(t,h) for (t,h) in edges if self._first_template.exists(t) and self._first_template.exists(h)}
+        
+        self._first_learner.setPossibleEdges(first)
+        self._lags_learner.setPossibleEdges(edges)
+
+    def useBDeuPrior(self, weight : float = 1):
+        """
+        The BDeu prior adds weight to all the cells of the counting tables. 
+        In other words, it adds weight rows in the database with equally 
+        probable values.
+
+        Args:
+            weight (float, optional): The prior weight. Defaults to 1.
+        """
+        self._first_learner.useBDeuPrior(weight)
+        self._lags_learner.useBDeuPrior(weight)
+
+    def useDirichletPrior(self, source : str | gum.BayesNet, weight : float):
+        """
+        Use the Dirichlet prior.
+
+        Args:
+            source (str | gum.BayesNet): the Dirichlet related source (filename of a database or a Bayesian network).
+            weight (float): the weight of the prior (the 'size' of the corresponding 'virtual database')
+        """
+        self._first_learner.useDirichletPrior(source, weight)
+        self._lags_learner.useDirichletPrior(source, weight)
+
+    def useGreedyHillClimbing(self):
+        """
+        Use greedy hill climbing algorithm.
+        """
+        self._first_learner.useGreedyHillClimbing()
+        self._lags_learner.useGreedyHillClimbing()
+
+    def useLocalSearchWithTabuList(self, tabu_size : int, nb_decrease : int):
+        """
+        Use a local search with tabu list.
+
+        Args:
+            tabu_size (int): The size of the tabu list.
+            nb_decrease (int): The max allowed number of consecutive changes decreasing the score.
+        """
+        self._lags_learner.useLocalSearchWithTabuList()
+        self._first_learner.useLocalSearchWithTabuList()
+
+    def useMDLCorrection(self):
+        """
+        Use MDL correction for MIIC.
+        """
+        self._first_learner.useMDLCorrection()
+        self._lags_learner.useMDLCorrection()
+    
+    def useMIIC(self):
+        """
+        Use MIIC.
+        """
+        self._lags_learner.useMIIC()
+        self._first_learner.useMIIC()
+
+    def useNMLCorrection(self):
+        """
+        Use NMLCorrection for MIIC.
+        """
+        self._lags_learner.useNMLCorrection()
+        self._first_learner.useNMLCorrection()
+    
+    def useNoCorrection(self):
+        """
+        Use NoCorr for MIIC.
+        """
+        self._lags_learner.useNoCorrection()
+        self._first_learner.useNoCorrection()
+    
+    def useNoPrior(self):
+        """
+        Use no prior.
+        """
+        self._lags_learner.useNoPrior()
+        self._first_learner.useNoPrior()
+    
+    def useScoreAIC(self):
+        """
+        Use an AIC score.
+        """
+        self._lags_learner.useScoreAIC()
+        self._first_learner.useScoreAIC()
+    
+    def useScoreBD(self):
+        """
+        Use a BD score.
+        """
+        self._lags_learner.useScoreBD()
+        self._first_learner.useScoreBD()
+
+    def useScoreBDeu(self):
+        """
+        Use a BDeu score.
+        """
+        self._lags_learner.useScoreBDeu()
+        self._first_learner.useScoreBDeu()
+
+    def useScoreBIC(self):
+        """
+        Use a BIC score.
+        """
+        self._lags_learner.useScoreBIC()
+        self._first_learner.useScoreBIC()
+
+    def useScoreK2(self):
+        """
+        Use a K2 score.
+        """
+        self._lags_learner.useScoreK2()    
+        self._first_learner.useScoreK2()    
+    
+    def useScoreLog2Likelihood(self):
+        """
+        Use a log2 likelihood score. 
+        """
+        self._lags_learner.useScoreLog2Likelihood()
+        self._first_learner.useScoreLog2Likelihood()
+    
+
+    def _encode_head_tail(self, tail : Tuple[str,int]|str, head : Tuple[str,int]) -> Tuple[str,str]:
+        """
+        Encodes a (variable, time slice) tuple or atemporal variable into its corresponding 
+        Bayes Net name. Tail can also be an atemporal variable, in which case it can either 
+        be a string, or a tuple (string, -1). 
+
+        Args:
+            tail (Tuple[str,int] | str): Tail variable (temporal or atemporal). The tail.
+            head (Tuple[str,int]): Head variable (must be temporal).The head. 
+
+        Returns:
+            Tuple[str,str]: Encoded names as (tail_name, head_name).
+        """
+
+        tail_name = KTBN.encode_name_static(tail[0],tail[1],self._delimiter) if type(tail) == tuple else tail
+        head_name = KTBN.encode_name_static(head[0],head[1],self._delimiter) 
+
+        return tail_name, head_name
+    
 
 
-def is_atemporal(dfs: List[pd.Series], column: str | int) -> bool:
+def _is_atemporal(dfs: List[pd.Series], column: str | int) -> bool:
     """
     Checks whether a variable is atemporal, meaning it remains constant 
     across all given DataFrames.
@@ -242,7 +529,7 @@ def is_atemporal(dfs: List[pd.Series], column: str | int) -> bool:
     """
     return all(df[column].nunique() == 1 for df in dfs)
 
-def create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal_variables : List, atemporal_variables : List) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def _create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal_variables : List, atemporal_variables : List) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Generates lagged feature sequences from a list of independent time series.
 
@@ -293,7 +580,7 @@ def create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal_
 
     return lags, first_rows
 
-def create_templates(
+def _create_templates(
     discretizer: Discretizer,
     dfs: List[pd.DataFrame],
     delimiter: str,
@@ -347,7 +634,7 @@ def create_templates(
 
     return first_template, lags_template
 
-def verify_timeslice(tail: int, head: int) -> None:
+def _verify_timeslice(tail: int, head: int) -> None:
     """
     Ensures that an arc does not violate temporal constraints. 
 
@@ -364,3 +651,4 @@ def verify_timeslice(tail: int, head: int) -> None:
             f"Invalid arc detected: Cannot create an edge from time slice {tail} "
             f"to time slice {head} in a KTBN."
         )
+
