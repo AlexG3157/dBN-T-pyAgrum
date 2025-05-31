@@ -260,11 +260,11 @@ class KTBN:
                 if self._bn.existsArc(tail_name, head_name):
                     unrolled_bn.addArc(tail_name, head_name)
             
-            # Vérifier s'il y a un arc dans la dernière tranche
+            # Check if there is an arc in the last slice
             last_slice_tail_name = self.encode_name(tail_var, self._k - 1)
             last_slice_head_name = self.encode_name(head_var, self._k - 1)
             if self._bn.existsArc(last_slice_tail_name, last_slice_head_name):
-                # Si oui, ajouter des arcs similaires pour les nouvelles tranches
+                # If yes, add similar arcs for the new slices
                 for t in range(self._k, self._k + n):
                     new_tail_name = self.encode_name(tail_var, t)
                     new_head_name = self.encode_name(head_var, t)
@@ -273,7 +273,7 @@ class KTBN:
         
         # Add arcs between two consecutive time slices
         for tail_var, head_var in inter_slice_arcs:
-            for t in range(self._k + n - 1):  # Modifier ici : k+n-1 au lieu de k+n
+            for t in range(self._k + n - 1):  # Modified here: k+n-1 instead of k+n
                 tail_name = self.encode_name(tail_var, t)
                 head_name = self.encode_name(head_var, t + 1)
                 unrolled_bn.addArc(tail_name, head_name)
@@ -286,10 +286,10 @@ class KTBN:
                 if self._bn.existsArc(tail_var, head_name):
                     unrolled_bn.addArc(tail_var, head_name)
             
-            # 2. Vérifier s'il y a un arc entre la variable atemporelle et la variable temporelle dans la dernière tranche
+            # 2. Check if there is an arc between the atemporal variable and the temporal variable in the last slice
             last_slice_head_name = self.encode_name(head_var, self._k - 1)
             if self._bn.existsArc(tail_var, last_slice_head_name):
-                # Si oui, ajouter des arcs similaires pour les nouvelles tranches
+                # If yes, add similar arcs for the new slices
                 for t in range(self._k, self._k + n):
                     new_head_name = self.encode_name(head_var, t)
                     unrolled_bn.addArc(tail_var, new_head_name)
@@ -299,13 +299,7 @@ class KTBN:
             name = self._bn.variable(node_id).name()
             static_name, t_slice = self.decode_name(name)
 
-            #if name == "B#1":
-            #    print(f"Parents de B#1 dans le réseau original : {[self._bn.variable(p).name() for p in self._bn.parents('B#1')]}")
-            #    print(f"Parents de B#1 dans le réseau déroulé : {[unrolled_bn.variable(p).name() for p in unrolled_bn.parents('B#1')]}")
-
             if t_slice < self._k:
-                #print("cas 1 ")
-                #print(f"Copie CPT {name} -> {name}: source {self._bn.cpt(name).domainSize()}, dest {unrolled_bn.cpt(name).domainSize()}")
                 unrolled_bn.cpt(name).fillWith(self._bn.cpt(name), unrolled_bn.cpt(name).names)
             else:
                 for t in range(self._k, self._k + n):
@@ -315,8 +309,6 @@ class KTBN:
                         else self.encode_name(self.decode_name(p_name)[0], p_t_slice - t + self._k)
                         for p_name in unrolled_bn.cpt(new_name).names
                     }
-                    #print("cas 2")
-                    #print(f"Copie CPT {name} -> {new_name}: source {self._bn.cpt(name).domainSize()}, dest {unrolled_bn.cpt(new_name).domainSize()}")
                     unrolled_bn.cpt(new_name).fillWith(self._bn.cpt(name), dict_names)
         
         return unrolled_bn
@@ -392,7 +384,7 @@ class KTBN:
             else:
                 atemporal_variables.add(name)
         
-        k = max_time_slice + 1  # k est le nombre de tranches, pas l'indice maximal
+        k = max_time_slice + 1  # k is the number of slices, not the maximum index
         
         ktbn = cls(k=k, delimiter=delimiter)
         ktbn._temporal_variables = temporal_variables
@@ -429,7 +421,7 @@ class KTBN:
                 temporal_variables.add(base_name)
                 max_time_slice = max(max_time_slice, time_slice)
         
-        k = max_time_slice + 1  # k est le nombre de tranches, pas l'indice maximal
+        k = max_time_slice + 1  # k is the number of slices, not the maximum index
         
         # Creation of a new KTBN
         ktbn = cls(k=k, delimiter=delimiter)
@@ -715,27 +707,28 @@ class KTBN:
         
         for trajectory in trajectories:
             trajectory_log_likelihood = 0.0
+            trajectory_length = len(trajectory)
             
-            # For each variable in the BN
+            # Phase 1: Calculate likelihood for the first k time slices (template nodes)
             for node_id in self._bn.nodes():
                 var = self._bn.variable(node_id)
                 var_name = var.name()
                 var_base, var_time = self.decode_name(var_name)
                 
                 # If the variable belongs to a time slice that doesn't exist in the trajectory
-                if var_time != -1 and var_time >= len(trajectory):
+                if var_time != -1 and var_time >= trajectory_length:
                     continue
                 
                 # Creation of an instanciation for the parents
                 inst = gum.Instantiation()
                 
-                # Ajouter les parents à l'instanciation
+                # Add parents to the instantiation
                 for parent_id in self._bn.parents(node_id):
                     parent_var = self._bn.variable(parent_id)
                     parent_name = parent_var.name()
                     parent_base, parent_time = self.decode_name(parent_name)
                     
-                    if parent_time != -1 and parent_time >= len(trajectory):
+                    if parent_time != -1 and parent_time >= trajectory_length:
                         continue
                     
                     inst.add(parent_var)
@@ -756,13 +749,80 @@ class KTBN:
                 inst[var_name] = 0
                 inst[var_name] = self._get_var_index(var, var_value)
                 
-                # Compute the probability of the variable knowing it's parents 
+                # Compute the probability of the variable knowing its parents 
                 cpt = self._bn.cpt(node_id)
                 prob = cpt[inst]
                 
                 # A probability equals to 0 is replaced by 1e-6
                 prob = max(prob, 1e-6)  
                 trajectory_log_likelihood += np.log(prob)
+            
+            # Phase 2: Calculate likelihood for the remaining time slices (t >= k)
+            if trajectory_length > self._k:
+                # Get nodes from the last time slice (k-1) to use for transition
+                last_slice_nodes = []
+                for node_id in self._bn.nodes():
+                    var = self._bn.variable(node_id)
+                    var_name = var.name()
+                    var_base, var_time = self.decode_name(var_name)
+                    
+                    if var_time == self._k - 1:  # Last time slice
+                        last_slice_nodes.append(node_id)
+                
+                # For each time step from k to trajectory_length-1
+                for t in range(self._k, trajectory_length):
+                    shift = t - (self._k - 1)  # How much to shift parent indices
+                    
+                    # For each node in the last time slice
+                    for node_id in last_slice_nodes:
+                        var = self._bn.variable(node_id)
+                        var_name = var.name()
+                        var_base, var_time = self.decode_name(var_name)
+                        
+                        # Create instantiation for shifted parents
+                        inst = gum.Instantiation()
+                        
+                        # Add parents with shifted time indices
+                        for parent_id in self._bn.parents(node_id):
+                            parent_var = self._bn.variable(parent_id)
+                            parent_name = parent_var.name()
+                            parent_base, parent_time = self.decode_name(parent_name)
+                            
+                            # Calculate the shifted time for this parent
+                            if parent_time == -1:  # Atemporal variable
+                                shifted_parent_time = -1
+                            else:
+                                shifted_parent_time = parent_time + shift
+                            
+                            # Skip if shifted time is out of bounds
+                            if shifted_parent_time != -1 and shifted_parent_time >= trajectory_length:
+                                continue
+                            
+                            inst.add(parent_var)
+                            
+                            # Get the value of the parent in the trajectory at shifted time
+                            parent_value = self._get_value_from_trajectory(trajectory, parent_base, shifted_parent_time)
+                            
+                            # Convert the value into index
+                            inst[parent_name] = self._get_var_index(parent_var, parent_value)
+                        
+                        # Add the current variable to the instantiation
+                        inst.add(var)
+                        
+                        # Get the value of the variable at time t
+                        var_value = self._get_value_from_trajectory(trajectory, var_base, t)
+                        
+                        # Convert the value into index
+                        inst[var_name] = 0
+                        inst[var_name] = self._get_var_index(var, var_value)
+                        
+                        # Compute the probability using the same CPT as the template
+                        cpt = self._bn.cpt(node_id)
+                        prob = cpt[inst]
+                        
+                        # A probability equals to 0 is replaced by 1e-6
+                        prob = max(prob, 1e-6)  
+                        trajectory_log_likelihood += np.log(prob)
             
             total_log_likelihood += trajectory_log_likelihood
         
