@@ -24,63 +24,57 @@ class TestKLearner(unittest.TestCase):
         k = 3
         self.ktbn = KTBN(k=k, delimiter='_')
         
-        # Add temporal variables
-        self.ktbn.addVariable("A", temporal=True)
-        self.ktbn.addVariable("B", temporal=True)
-        self.ktbn.addVariable("C", temporal=True)
-        self.ktbn.addVariable("D", temporal=True)
+        # Add temporal variables with explicit domains (5 variables)
+        var_A = gum.LabelizedVariable("A", "Variable A", ["0", "1"])
+        var_B = gum.LabelizedVariable("B", "Variable B", ["0", "1"])
+        var_C = gum.LabelizedVariable("C", "Variable C", ["0", "1"])
+        var_D = gum.LabelizedVariable("D", "Variable D", ["0", "1"])
+        var_G = gum.LabelizedVariable("G", "Variable G", ["0", "1"])
         
-        # Add atemporal variables
-        self.ktbn.addVariable("E", temporal=False)
-        self.ktbn.addVariable("F", temporal=False)
+        self.ktbn.addVariable(var_A, temporal=True)
+        self.ktbn.addVariable(var_B, temporal=True)
+        self.ktbn.addVariable(var_C, temporal=True)
+        self.ktbn.addVariable(var_D, temporal=True)
+        self.ktbn.addVariable(var_G, temporal=True)
         
-        # Add intra-slice arcs (within the same time-slice)
+        # Add atemporal variables with explicit domains (2 variables)
+        var_E = gum.LabelizedVariable("E", "Variable E", ["0", "1"])
+        var_F = gum.LabelizedVariable("F", "Variable F", ["0", "1"])
+        
+        self.ktbn.addVariable(var_E, temporal=False)
+        self.ktbn.addVariable(var_F, temporal=False)
+        
+        # Add arcs
         for t in range(k):
             self.ktbn.addArc(("A", t), ("B", t))
             self.ktbn.addArc(("B", t), ("C", t))
             self.ktbn.addArc(("C", t), ("D", t))
             self.ktbn.addArc(("A", t), ("D", t))
+            
+            self.ktbn.addArc(("A", t), ("G", t))
+            self.ktbn.addArc(("G", t), ("D", t))
         
-        # Add inter-slice arcs (between consecutive time-slices)
         for t in range(k-1):
             self.ktbn.addArc(("A", t), ("A", t+1))
             self.ktbn.addArc(("B", t), ("B", t+1))
             self.ktbn.addArc(("C", t), ("C", t+1))
             self.ktbn.addArc(("D", t), ("D", t+1))
+            self.ktbn.addArc(("G", t), ("G", t+1))
         
-        # Add arcs from atemporal variables
         for t in range(k):
             self.ktbn.addArc(("E", -1), ("A", t))
             self.ktbn.addArc(("F", -1), ("C", t))
         
-        # Add cross-time-slice arcs
         for t in range(k-1):
             self.ktbn.addArc(("B", t), ("A", t+1))
             self.ktbn.addArc(("C", t), ("D", t+1))
-            self.ktbn.addArc(("D", t), ("B", t+1))
+            self.ktbn.addArc(("G", t), ("C", t+1))
         
         # Random generation of CPTs
         self.ktbn._bn.generateCPTs()
         
         # Generate trajectories from this KTBN
         self.trajectories = self.ktbn.sample(n_trajectories=5, trajectory_len=10)
-        
-        # Diagnostic information to understand potential errors
-        print("\n===== DIAGNOSTIC INFORMATION =====")
-        print(f"Number of generated trajectories: {len(self.trajectories)}")
-
-        if len(self.trajectories) > 0:
-            first_traj = self.trajectories[0]
-            print(f"\nDimensions of the first trajectory: {first_traj.shape}")
-            print(f"Available columns in the first trajectory:\n{list(first_traj.columns)}")
-            print("\nPreview of the first trajectory:")
-            print(first_traj.head(3))
-
-        print(f"\nTemporal variables in the KTBN:\n{self.ktbn._temporal_variables}")
-        print(f"Atemporal variables in the KTBN:\n{self.ktbn._atemporal_variables}")
-
-        print("\nNames in the underlying BN:")
-        print(sorted(self.ktbn._bn.names()))
 
     def test_learn_and_print_results(self):
         """
@@ -90,7 +84,6 @@ class TestKLearner(unittest.TestCase):
         trajectories = self.ktbn.sample(n_trajectories=5, trajectory_len=10)
         
         # 2. Pass trajectories directly to KLearner
-        # KLearner will call prepare_for_learner internally
         
         klearner = KLearner(trajectories, self.discretizer, delimiter='_')
         
@@ -117,4 +110,4 @@ class TestKLearner(unittest.TestCase):
             self.assertLessEqual(ll, best_ll)
 
 if __name__ == '__main__':
-    unittest.main(verbosity=2)
+    unittest.main()
