@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from typing import List, Optional, Tuple, Dict, Any
+import pyAgrum as gum
 from pyAgrum.lib.discretizer import Discretizer
 
 from KTBN import KTBN
@@ -9,7 +10,7 @@ from Learner import Learner
 class KLearner:
     """
     A class for learning a K-Time Slice Bayesian Network (KTBN) without knowing the k in advance.
-    It finds the optimal k by maximizing the log-likelihood of the trajectories given the model.
+    It finds the optimal k by minimizing the BIC score of the trajectories given the model.
     """
     
     def __init__(self, trajectories: List[pd.DataFrame], discretizer: Discretizer, delimiter: str = '#'):
@@ -26,6 +27,8 @@ class KLearner:
         self.delimiter = delimiter
         self._best_k = None
         self._best_ktbn = None
+        self._best_bic_score = None
+        self._bic_scores = {}
         self._log_likelihoods = {}
         self._constant_variables = []
         self._filtered_trajectories = []
@@ -35,7 +38,7 @@ class KLearner:
     
     def learn(self, max_k: int = 10) -> KTBN:
         """
-        Learn a KTBN with the optimal k.
+        Learn a KTBN with the optimal k by minimizing the BIC score.
         
         Args:
             max_k (int, optional): Maximum k to test. Defaults to 10.
@@ -43,34 +46,32 @@ class KLearner:
         Returns:
             KTBN: KTBN with the optimal k.
         """
-        best_log_likelihood = float('-inf')
+        best_bic_score = float('inf')  # Minimiser le BIC
         best_k = None
         best_ktbn = None
-        
-        # Create a temporary KTBN only for preparing trajectories
-        # No need to add variables, just to use prepare_for_learner
-        temp_ktbn = KTBN(k=1, delimiter=self.delimiter)
-        
-        
+                
         for k in range(2, max_k + 1):
-            # Pass filtered trajectories to Learner (without constant variables)
-            # Learner will detect temporal vs. atemporal variables automatically
             learner = Learner(self._filtered_trajectories, self.discretizer, delimiter=self.delimiter, k=k)
             bn = learner.learn_ktbn()
             ktbn = KTBN.from_bn(bn, self.delimiter)
             
-            # Calculate log-likelihood on filtered trajectories (without constant variables)
+            # Calculer le score BIC
+            bic_score = self._calculate_bic_score(ktbn, bn, self._filtered_trajectories)
+            self._bic_scores[k] = bic_score
+            
+            # Garder également la log-vraisemblance pour compatibilité
             log_likelihood = ktbn.log_likelihood(self._filtered_trajectories)
             self._log_likelihoods[k] = log_likelihood
             
-            # Keep the k that maximize the log likelihood
-            if log_likelihood > best_log_likelihood:
-                best_log_likelihood = log_likelihood
+            # Garder le k qui minimise le BIC
+            if bic_score < best_bic_score:
+                best_bic_score = bic_score
                 best_k = k
                 best_ktbn = ktbn
         
         self._best_k = best_k
         self._best_ktbn = best_ktbn
+        self._best_bic_score = best_bic_score
         
         return best_ktbn
     
@@ -91,6 +92,68 @@ class KLearner:
             Dict[int, float]: Dictionary mapping k to log-likelihood.
         """
         return self._log_likelihoods
+    
+    def get_bic_scores(self) -> Dict[int, float]:
+        """
+        Get the BIC scores for each k tested.
+        
+        Returns:
+            Dict[int, float]: Dictionary mapping k to BIC score.
+        """
+        return self._bic_scores
+    
+    def get_best_bic_score(self) -> Optional[float]:
+        """
+        Get the best BIC score found.
+        
+        Returns:
+            Optional[float]: Best BIC score or None if learn() has not been called.
+        """
+        return self._best_bic_score
+    
+    def _count_data_points(self, trajectories: List[pd.DataFrame]) -> int:
+        """
+        Calculate the total number of data points across all trajectories.
+        
+        Args:
+            trajectories (List[pd.DataFrame]): List of trajectories
+            
+        Returns:
+            int: n_trajectories × trajectory_len
+        """
+        total_points = 0
+        for trajectory in trajectories:
+            total_points += len(trajectory)
+        return total_points
+    
+    def _calculate_bic_score(self, ktbn: KTBN, bn: gum.BayesNet, trajectories: List[pd.DataFrame]) -> float:
+        """
+        Calculate the BIC score for a given KTBN.
+        
+        BIC = k * ln(n) - 2 * ln(L̂)
+        where k = number of parameters, n = number of data points, L̂ = likelihood
+        
+        Args:
+            ktbn (KTBN): The KTBN model
+            bn (gum.BayesNet): The underlying Bayesian network
+            trajectories (List[pd.DataFrame]): The trajectories
+            
+        Returns:
+            float: BIC score (lower is better)
+        """
+        # Log-vraisemblance
+        log_likelihood = ktbn.log_likelihood(trajectories)
+        
+        # Nombre de paramètres (dimension du réseau)
+        k_params = bn.dim()
+        
+        # Nombre total de points de données
+        n_data_points = self._count_data_points(trajectories)
+        
+        # Formule BIC
+        bic_score = k_params * np.log(n_data_points) - 2 * log_likelihood
+        
+        return bic_score
     
     def _detect_and_filter_constant_variables(self) -> None:
         """
