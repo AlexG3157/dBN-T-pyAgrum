@@ -2,8 +2,9 @@ import random
 import pyAgrum as gum
 import pandas as pd
 import numpy as np
-import re
-from typing import Tuple, List, Union, Dict, Any, Optional
+from multiprocessing import Pool
+from typing import Tuple, List, Union
+import copy
 
 class KTBN:
     """
@@ -30,7 +31,16 @@ class KTBN:
         self._temporal_variables = set()
         self._atemporal_variables = set()
         self._bn = gum.BayesNet()
-    
+
+    def copy(self):
+
+        new_ktbn = KTBN(self._k, self._delimiter)
+        new_ktbn._atemporal_variables = copy.deepcopy(self._atemporal_variables)
+        new_ktbn._temporal_variables = copy.deepcopy(self._temporal_variables)
+        new_ktbn._bn = copy.deepcopy(self._bn)
+        return new_ktbn
+
+
     def set_k(self, k: int) -> None:
         """
         Set the number of time-slices
@@ -334,7 +344,6 @@ class KTBN:
         Returns:
             gum.BayesNet: deep copy of the BN
         """
-        import copy
         return copy.deepcopy(self._bn)
     
     def save(self, filename: str) -> None:
@@ -432,16 +441,41 @@ class KTBN:
         
         return ktbn
 
-    def sample(self, n_trajectories : int, trajectory_len : int) -> List[pd.DataFrame]:
+    def sample(self, n_trajectories : int, trajectory_len : int, processes : int = None) -> List[pd.DataFrame]:
         """
-        Generates a list of trajectories sampled from the ktbn.
+        Generate a list of trajectories sampled from the ktbn in parallel 
+        using Python's multiprocessing module.
 
         Args:
             n_trajectories (int): The number of trajectories to sample.
             trajectory_len (int): The length of each trajectory.
+            processes (int, optional): Number of worker processes to use. Defaults to the number of CPU cores.
 
         Returns:
             List[pd.DataFrame]: A list of data frames, each containing a sample trajectory.
+
+        ValueError
+            If `trajectory_len` is less than the order K of the KTBN.
+        """ 
+        if trajectory_len < self._k:
+            raise ValueError("Trajectory length can't be smaller than k.")
+        
+        with Pool(processes=processes) as pool:
+            
+            results = [pool.apply_async(_sample_worker, args=(self, trajectory_len)) for _ in range(n_trajectories)]
+            output = [res.get() for res in results]
+        
+        return output
+              
+    def _sample(self, trajectory_len : int) -> pd.DataFrame:
+        """
+        Generates a trajectory sampled from the ktbn.
+
+        Args:
+            trajectory_len (int): The length of the trajectory.
+
+        Returns:
+            List[pd.DataFrame]: A data frame containing a sample trajectory.
 
         ValueError
             If `trajectory_len` is less than the order K of the KTBN.
@@ -450,77 +484,74 @@ class KTBN:
         if trajectory_len < self._k:
             raise ValueError("Trajectory length can't be smaller than k.")
 
-        trajectories = []
 
         vars = list(self._temporal_variables.union(self._atemporal_variables))
         
         dtypes = {var : str if self._bn.variable(self.encode_name(var,0)).varType() == gum.VarType_LABELIZED else int for var in self._temporal_variables}
         dtypes.update({var : str if self._bn.variable(var).varType() == gum.VarType_LABELIZED else int for var in self._atemporal_variables})
 
-        for _ in range(n_trajectories):
+    
 
-            df = pd.DataFrame(np.zeros((trajectory_len, len(vars))), columns = vars).astype(dtypes)
-            order = self._bn.topologicalOrder()
-            last_order = [var for var in order if self.decode_name(self._bn.variable(var).name())[1] == self._k-1]
+        df = pd.DataFrame(np.zeros((trajectory_len, len(vars))), columns = vars).astype(dtypes)
+        order = self._bn.topologicalOrder()
+        last_order = [var for var in order if self.decode_name(self._bn.variable(var).name())[1] == self._k-1]
+        
+        trajectory = gum.Instantiation()
+
+        # First time slices.
+        for node in order:
             
-            trajectory = gum.Instantiation()
+            var = self._bn.variable(node)
+            val = var.label(self._bn.cpt(node).extract(trajectory).draw())
 
-            # First time slices.
-            for node in order:
-                
+            trajectory.add(var)
+            trajectory[var.name()] = val
+
+            name, index = self.decode_name(var.name())
+
+            if index == -1:
+                df[name] = dtypes[name](val)
+            else:
+                df.loc[index, name] = dtypes[name](val)
+        
+        # Transition
+        for i in range(1,trajectory_len - self._k + 1):
+
+            I = gum.Instantiation()
+
+            for node in last_order:
+
                 var = self._bn.variable(node)
-                val = var.label(self._bn.cpt(node).extract(trajectory).draw())
-
-                trajectory.add(var)
-                trajectory[var.name()] = val
-
-                name, index = self.decode_name(var.name())
-
-                if index == -1:
-                    df[name] = dtypes[name](val)
-                else:
-                    df.loc[index, name] = dtypes[name](val)
-            
-            # Transition
-            for i in range(1,trajectory_len - self._k + 1):
-
-                I = gum.Instantiation()
-
-                for node in last_order:
-
-                    var = self._bn.variable(node)
-                    # Add parents to instantiation 
-                    for parent in self._bn.parents(node):
-                        
-                        parent_var = self._bn.variable(parent)
-                        if I.contains(parent_var):
-                            continue
-
-                        I.add(parent_var)
-                        name, index = self.decode_name(parent_var.name())
-                        
-                        if index == -1:
-                            I[name] = trajectory[name]
-                        else :
-                            I[parent_var.name()] = trajectory[self.encode_name(name, index+i)]
-
-                    # Sample node
-                    val = var.label(self._bn.cpt(node).extract(I).draw())
-                    I.add(var)
-                    I[var.name()] = val
+                # Add parents to instantiation 
+                for parent in self._bn.parents(node):
                     
-                    new_var = var.clone()
-                    name, index = self.decode_name(new_var.name())
-                    new_var.setName(self.encode_name(name, index+i))
+                    parent_var = self._bn.variable(parent)
+                    if I.contains(parent_var):
+                        continue
 
-                    trajectory.add(new_var)
-                    trajectory[new_var.name()] = val
+                    I.add(parent_var)
+                    name, index = self.decode_name(parent_var.name())
+                    
+                    if index == -1:
+                        I[name] = trajectory[name]
+                    else :
+                        I[parent_var.name()] = trajectory[self.encode_name(name, index+i)]
 
-                    df.loc[index+i,name] = dtypes[name](val)
+                # Sample node
+                val = var.label(self._bn.cpt(node).extract(I).draw())
+                I.add(var)
+                I[var.name()] = val
+                
+                new_var = var.clone()
+                name, index = self.decode_name(new_var.name())
+                new_var.setName(self.encode_name(name, index+i))
 
-            trajectories.append(df)
+                trajectory.add(new_var)
+                trajectory[new_var.name()] = val
 
-        return trajectories
+                df.loc[index+i,name] = dtypes[name](val)
+
+        return df
         
     @staticmethod
     def random(k : int, n_vars : int, n_mods : int, n_arcs : int, delimiter = '#') -> 'KTBN':
@@ -827,3 +858,17 @@ class KTBN:
             total_log_likelihood += trajectory_log_likelihood
         
         return total_log_likelihood
+
+
+def _sample_worker(ktbn : KTBN, length : int) -> pd.DataFrame:
+    """
+    Samples one trajectory from a KTBN using a specified random seed.
+
+    Args:
+        args (Tuple[KTBN, int, int]): (KTBN instance, trajectory length, random seed).
+
+    Returns:
+        pd.DataFrame: Sampled trajectory as a DataFrame.
+    """
+    gum.initRandom()
+    return ktbn._sample(length)
