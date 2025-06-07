@@ -1,11 +1,14 @@
 import pandas as pd
 import numpy as np
-from typing import List, Optional, Tuple, Dict, Any
+
 import pyAgrum as gum
 from pyAgrum.lib.discretizer import Discretizer
 
+from typing import List, Optional, Dict
+
 from KTBN import KTBN
 from Learner import Learner
+
 
 class KLearner:
     """
@@ -23,7 +26,7 @@ class KLearner:
             delimiter (str, optional): Delimiter for variable names. Defaults to '#'.
         """
         self.trajectories = trajectories
-        self.discretizer = discretizer
+        self._discretizer = discretizer
         self.delimiter = delimiter
         self._best_k = None
         self._best_ktbn = None
@@ -51,12 +54,11 @@ class KLearner:
         best_ktbn = None
                 
         for k in range(2, max_k + 1):
-            learner = Learner(self._filtered_trajectories, self.discretizer, delimiter=self.delimiter, k=k)
-            bn = learner.learn_ktbn()
-            ktbn = KTBN.from_bn(bn, self.delimiter)
+            learner = Learner(self._filtered_trajectories, self._discretizer, delimiter=self.delimiter, k=k)
+            ktbn = learner.learn_ktbn()
             
             # Calculer le score BIC
-            bic_score = self._calculate_bic_score(ktbn, bn, self._filtered_trajectories)
+            bic_score = self._calculate_bic_score(ktbn, self._filtered_trajectories)
             self._bic_scores[k] = bic_score
             
             # Garder également la log-vraisemblance pour compatibilité
@@ -74,7 +76,7 @@ class KLearner:
         self._best_bic_score = best_bic_score
         
         return best_ktbn
-    
+
     def get_best_k(self) -> Optional[int]:
         """
         Get the best k found.
@@ -111,7 +113,8 @@ class KLearner:
         """
         return self._best_bic_score
     
-    def _count_data_points(self, trajectories: List[pd.DataFrame]) -> int:
+    @staticmethod
+    def _count_data_points(trajectories: List[pd.DataFrame]) -> int:
         """
         Calculate the total number of data points across all trajectories.
         
@@ -126,7 +129,8 @@ class KLearner:
             total_points += len(trajectory)
         return total_points
     
-    def _calculate_bic_score(self, ktbn: KTBN, bn: gum.BayesNet, trajectories: List[pd.DataFrame]) -> float:
+    @staticmethod
+    def _calculate_bic_score(ktbn: KTBN, trajectories: List[pd.DataFrame]) -> float:
         """
         Calculate the BIC score for a given KTBN.
         
@@ -135,12 +139,13 @@ class KLearner:
         
         Args:
             ktbn (KTBN): The KTBN model
-            bn (gum.BayesNet): The underlying Bayesian network
             trajectories (List[pd.DataFrame]): The trajectories
             
         Returns:
             float: BIC score (lower is better)
         """
+        bn = ktbn.to_bn()
+        
         # Log-vraisemblance
         log_likelihood = ktbn.log_likelihood(trajectories)
         
@@ -148,7 +153,7 @@ class KLearner:
         k_params = bn.dim()
         
         # Nombre total de points de données
-        n_data_points = self._count_data_points(trajectories)
+        n_data_points = KLearner._count_data_points(trajectories)
         
         # Formule BIC
         bic_score = k_params * np.log(n_data_points) - 2 * log_likelihood
@@ -222,3 +227,4 @@ class KLearner:
             List[str]: List of constant variable names.
         """
         return self._constant_variables.copy()
+    

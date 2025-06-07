@@ -68,12 +68,12 @@ class Learner():
         first_bn = self._first_learner.learnBN()
         
 
-        ktbn = gum.BayesNet(first_bn)
+        bn = gum.BayesNet(first_bn)
         
         # Add the variables of the last time slice
         for col in self._temporal_vars:
             
-            ktbn.add(lags_bn.variable(KTBN.encode_name_static(col,self._k-1,self._delimiter)))
+            bn.add(lags_bn.variable(KTBN.encode_name_static(col,self._k-1,self._delimiter)))
             
 
         #Add arcs
@@ -85,19 +85,19 @@ class Learner():
             for parent in parents:
 
                 p_name = lags_bn.variable(parent).name()
-                ktbn.addArc(p_name,name)
+                bn.addArc(p_name,name)
 
         # Add atemporal cpts
         for col in self._atemporal_vars:
 
-            ktbn.cpt(col).fillWith(lags_bn.cpt(col), ktbn.cpt(col).names)
+            bn.cpt(col).fillWith(lags_bn.cpt(col), bn.cpt(col).names)
 
         # Add temporal cpts
         for col in self._temporal_vars:
             name = KTBN.encode_name_static(col,self._k-1,self._delimiter)
-            ktbn.cpt(name).fillWith(lags_bn.cpt(name), ktbn.cpt(name).names)
+            bn.cpt(name).fillWith(lags_bn.cpt(name), bn.cpt(name).names)
 
-        return ktbn
+        return KTBN.from_bn(bn, delimiter=self._delimiter)
 
     def get_delimiter(self) -> str:
         """

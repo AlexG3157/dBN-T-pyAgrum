@@ -1,10 +1,11 @@
+import copy
 import random
 import pyAgrum as gum
 import pandas as pd
+import os
 import numpy as np
-import re
 from multiprocessing import Pool
-from typing import Tuple, List, Union, Dict, Any, Optional
+from typing import Tuple, List, Union
 
 def _sample_worker(ktbn: 'KTBN', trajectory_len: int) -> pd.DataFrame:
     """
@@ -17,6 +18,7 @@ def _sample_worker(ktbn: 'KTBN', trajectory_len: int) -> pd.DataFrame:
     Returns:
         pd.DataFrame: A single sampled trajectory
     """
+    gum.initRandom()
     return ktbn._sample(trajectory_len)
 
 class KTBN:
@@ -348,7 +350,6 @@ class KTBN:
         Returns:
             gum.BayesNet: deep copy of the BN
         """
-        import copy
         return copy.deepcopy(self._bn)
     
     def save(self, filename: str) -> None:
@@ -441,7 +442,6 @@ class KTBN:
         ktbn = cls(k=k, delimiter=delimiter)
         ktbn._temporal_variables = temporal_variables
         ktbn._atemporal_variables = atemporal_variables
-        import copy
         ktbn._bn = copy.deepcopy(bn)
         
         return ktbn
