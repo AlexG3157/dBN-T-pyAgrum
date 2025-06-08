@@ -572,7 +572,7 @@ class KTBN:
             KTBN: A random KTBN with the specified parameters.
         """
         # Check if the number of arcs is valid    
-        if n_arcs >(k+1)/2 * (n_vars*(n_vars-1) + k * n_vars**2):
+        if n_arcs > (k/2) * ( (k-1) * n_vars**2  + n_vars*(n_vars-1)):
 
             raise ValueError("Too many arcs requested.")
         
