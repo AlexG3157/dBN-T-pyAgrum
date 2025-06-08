@@ -18,25 +18,32 @@ from Learner import Learner
 
 
 # Log functions
-def already_done(config, path="grid_results.csv"):
+def already_done(config_dict, path="grid_results.csv"):
+    config_id = str(tuple(config_dict.values()))
+
     if not os.path.exists(path):
         return False
-    with open(path, 'r') as f:
-        return any(config in line for line in f)
+    
+    with open(path, newline='') as file:
+        reader = csv.DictReader(file)
+        return any(row.get('config_id') == config_id for row in reader)
 
-def log_result(config, metrics, path="grid_results.csv"):
+
+def log_result(config_dict, metrics, path="grid_results.csv"):
 
     file_exists = os.path.exists(path)
-    result = config
+
+    config_id = str(tuple(config_dict.values()))  
+    result = {'config_id': config_id}
+    result.update(config_dict)
     result.update(metrics)
-    
+
     with open(path, mode='a', newline='') as file:
         writer = csv.DictWriter(file, fieldnames=result.keys())
-
         if not file_exists:
             writer.writeheader()
-        
         writer.writerow(result)
+
 
 file_path = "experiments/data/k_ntraj_length.csv"
 
@@ -67,11 +74,11 @@ for mods in n_mods_range:
                                   'n_traj':n_traj, 
                                   'traj_length':traj_length
                                   }
-                        config = mods, density, n_vars, k, n_traj, traj_length
                         
                         print("Starting config: " , config_dict)
                         
-                        if already_done(config, path=file_path):
+                        if already_done(config_dict, path=file_path):
+                            print("Config found on file, skipping.")
                             continue
 
                         for i in range(repetitions):
@@ -127,6 +134,7 @@ for mods in n_mods_range:
 
                             print(data)
                             log_result(config_dict, data, path=file_path)
+                        print("Config done!")
                          
 
 
