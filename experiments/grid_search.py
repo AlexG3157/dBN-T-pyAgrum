@@ -49,8 +49,8 @@ file_path = "data/learner_ntraj_length.csv"
 
 #Search space
 k_range = [2,5,7,10]
-n_traj_range = [100,500,1500]
-traj_length_range = [11,20,35]
+n_traj_range = [100,500,1500,2500]
+traj_length_range = [11,20,35,50]
 
 n_vars_range = [4]
 n_mods_range =[3]
@@ -125,6 +125,7 @@ for mods in n_mods_range:
                                     data["skeleton_"+key] = skeleton_scores[key]
 
                                 data.update(cm.hamming())
+                                data.update({'learning_time' : learning_time})
 
                             if do_KLearner:
 
@@ -137,7 +138,6 @@ for mods in n_mods_range:
                                 k_learning_time = learning_end_time-learning_start_time
         
                                 data.update({
-                                    'learning_time' : learning_time,
                                     'k_learning_time' : k_learning_time,
                                     'BIC_Score' : klearner.get_best_bic_score(),
                                     'learned_k' : klearner.get_best_k()
