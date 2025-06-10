@@ -45,12 +45,12 @@ def log_result(config_dict, metrics, path="grid_results.csv"):
         writer.writerow(result)
 
 
-file_path = "experiments/data/k_ntraj_length.csv"
+file_path = "data/learner_ntraj_length.csv"
 
 #Search space
 k_range = [2,5,7,10]
-n_traj_range = [100,500,1500,2500]
-traj_length_range = [11,20,35,50]
+n_traj_range = [100,500,1500]
+traj_length_range = [11,20,35]
 
 n_vars_range = [4]
 n_mods_range =[3]
@@ -58,6 +58,8 @@ density_range = [0.5]
 
 repetitions = 20
 
+do_learner = True
+do_KLearner = False
 
 for mods in n_mods_range:
     for density in density_range:
@@ -72,7 +74,9 @@ for mods in n_mods_range:
                                   'n_vars': n_vars, 
                                   'k':k, 
                                   'n_traj':n_traj, 
-                                  'traj_length':traj_length
+                                  'traj_length':traj_length,
+                                  'do_learner' : do_learner,
+                                  'do_KLearner' : do_KLearner
                                   }
                         
                         print("Starting config: " , config_dict)
@@ -88,52 +92,60 @@ for mods in n_mods_range:
                             true_ktbn = KTBN.random(k,n_vars,mods,n_arcs, delimiter='_')
                             trajs = true_ktbn.sample(n_traj, traj_length)
 
-                            learner = Learner(trajs, Discretizer(),delimiter='_', k=k)
+                            data = dict()
 
-                            learning_start_time = time.perf_counter()
-                            learned_ktbn = learner.learn_ktbn()
-                            learning_end_time = time.perf_counter()
+                            if do_learner:
 
-                            learning_time = learning_end_time-learning_start_time
+                                learner = Learner(trajs, Discretizer(),delimiter='_', k=k)
 
-                            true_bn = true_ktbn.to_bn()
-                            learned_bn = learned_ktbn.to_bn()
+                                learning_start_time = time.perf_counter()
+                                learned_ktbn = learner.learn_ktbn()
+                                learning_end_time = time.perf_counter()
 
-                            g = gum.GibbsBNdistance(true_bn, learned_bn)
-                            g.setVerbosity(True)
-                            g.setMaxTime(120)
-                            g.setBurnIn(5000)
-                            g.setEpsilon(1e-7)
-                            g.setPeriodSize(500)
-                            data = g.compute()
+                                learning_time = learning_end_time-learning_start_time
 
-                            cm = gcm.GraphicalBNComparator(true_bn, learned_bn)
+                                true_bn = true_ktbn.to_bn()
+                                learned_bn = learned_ktbn.to_bn()
 
-                            data.update(cm.scores())
+                                g = gum.GibbsBNdistance(true_bn, learned_bn)
+                                g.setVerbosity(True)
+                                g.setMaxTime(120)
+                                g.setBurnIn(5000)
+                                g.setEpsilon(1e-7)
+                                g.setPeriodSize(500)
+                                data.update(g.compute())
+
+                                cm = gcm.GraphicalBNComparator(true_bn, learned_bn)
+
+                                data.update(cm.scores())
+            
+                                skeleton_scores =cm.skeletonScores()
+
+                                for key in skeleton_scores:
+                                    data["skeleton_"+key] = skeleton_scores[key]
+
+                                data.update(cm.hamming())
+
+                            if do_KLearner:
+
+                                klearner = KLearner(trajs, Discretizer(), delimiter='_')
+
+                                learning_start_time = time.perf_counter()
+                                klearner.learn(10)
+                                learning_end_time = time.perf_counter()
+
+                                k_learning_time = learning_end_time-learning_start_time
         
-                            skeleton_scores =cm.skeletonScores()
-
-                            for key in skeleton_scores:
-                                data["skeleton_"+key] = skeleton_scores[key]
-
-                            data.update(cm.hamming())
-
-                            klearner = KLearner(trajs, Discretizer(), delimiter='_')
-
-                            learning_start_time = time.perf_counter()
-                            learned_k = klearner.learn(10)
-                            learning_end_time = time.perf_counter()
-
-                            k_learning_time = learning_end_time-learning_start_time
-    
-                            data.update({
-                                'learning_time' : learning_time,
-                                'k_learning_time' : k_learning_time,
-                                'BIC_Score' : klearner.get_best_bic_score()
-                                })
+                                data.update({
+                                    'learning_time' : learning_time,
+                                    'k_learning_time' : k_learning_time,
+                                    'BIC_Score' : klearner.get_best_bic_score(),
+                                    'learned_k' : klearner.get_best_k()
+                                    })
 
                             print(data)
                             log_result(config_dict, data, path=file_path)
+
                         print("Config done!")
                          
 
