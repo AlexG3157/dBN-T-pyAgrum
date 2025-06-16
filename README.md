@@ -1,9 +1,9 @@
-# Implémentation et validation de réseaux bayésiens dynamiques d’ordre T avec pyAgrum
+# Implémentation et validation de réseaux bayésiens dynamiques d’ordre T avec pyagrum
 
 ## Description
 
-Les réseaux bayésiens dynamiques (dBN) sont une extension des réseaux bayésiens qui mo-
-délisent des processus stochastiques. Ils représentent les dépendances probabilistes entre les
+Les réseaux bayésiens dynamiques (dBN) sont une extension des réseaux bayésiens qui modélisent 
+des processus stochastiques. Ils représentent les dépendances probabilistes entre les
 variables aléatoires d’un système à travers des tranches temporelles, en tenant compte des
 relations probabilistes (ou causales) entre ces variables. Ces modèles sont particulièrement
 adaptés à des applications dans des domaines tels que la modélisation de séries temporelles,

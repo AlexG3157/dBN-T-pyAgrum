@@ -1,12 +1,17 @@
 import unittest
 import pandas as pd
 import numpy as np
-import pyAgrum as gum
-from pyAgrum.lib.discretizer import Discretizer
+import pyagrum as gum
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 import random
 
-from KTBN import KTBN
+
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../ktbn')))
+
 from KLearner import KLearner
+from KTBN import KTBN
 
 class TestKLearner(unittest.TestCase):
     """
@@ -17,8 +22,8 @@ class TestKLearner(unittest.TestCase):
         """
         Preparation of data and objects for testing.
         """
-        # Create a simple discretizer
-        self.discretizer = Discretizer()
+        # Create a simple discreteTypeProcessor
+        self.discreteTypeProcessor = DiscreteTypeProcessor()
         
         # Create a more complex KTBN with k=3
         k = 3
@@ -91,7 +96,7 @@ class TestKLearner(unittest.TestCase):
         
         # 2. Pass trajectories directly to KLearner
         
-        klearner = KLearner(trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(trajectories, self.discreteTypeProcessor, delimiter='_')
         
         # Learn the KTBN with optimal k (testing up to k=10)
         ktbn = klearner.learn(max_k=10)
@@ -99,21 +104,21 @@ class TestKLearner(unittest.TestCase):
         # Display the optimal k found
         print(f"\nOptimal k found: {klearner.get_best_k()}")
         
-        # Display log-likelihoods for each k
-        log_likelihoods = klearner.get_log_likelihoods()
-        print("\nLog-likelihoods by k:")
-        for k, ll in sorted(log_likelihoods.items()):
+        # Display bic scores for each k
+        bic_scores = klearner.get_bic_scores()
+        print("\nBIC scores by k:")
+        for k, ll in sorted(bic_scores.items()):
             print(f"  k={k}: {ll}")
         
         # Verify that optimal k is defined
         self.assertIsNotNone(klearner.get_best_k())
         
-        # Verify that log-likelihoods are consistent
+        # Verify that the BIC scores are consistent
         best_k = klearner.get_best_k()
-        best_ll = log_likelihoods[best_k]
-        for k, ll in log_likelihoods.items():
-            # The optimal k must have the highest log-likelihood
-            self.assertLessEqual(ll, best_ll)
+        best_bic = bic_scores[best_k]
+        for k, ll in bic_scores.items():
+            # The optimal k must have the minimum BIC score.
+            self.assertGreaterEqual(ll, best_bic)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

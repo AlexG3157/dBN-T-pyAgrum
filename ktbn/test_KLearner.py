@@ -1,8 +1,8 @@
 import unittest
 import pandas as pd
 import numpy as np
-import pyAgrum as gum
-from pyAgrum.lib.discretizer import Discretizer
+import pyagrum as gum
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 import random
 
 from KTBN import KTBN
@@ -21,8 +21,8 @@ class TestKLearner(unittest.TestCase):
         random.seed(42)
         np.random.seed(42)
         
-        # Create a simple discretizer
-        self.discretizer = Discretizer()
+        # Create a simple discreteTypeProcessor
+        self.DiscreteTypeProcessor = DiscreteTypeProcessor()
         
         # Generate a random KTBN using the random generator
         self.k = 3
@@ -48,7 +48,7 @@ class TestKLearner(unittest.TestCase):
         Test basic BIC learning functionality.
         """
         # Create KLearner
-        klearner = KLearner(self.trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(self.trajectories, self.discreteTypeProcessor, delimiter='_')
         
         learned_ktbn = klearner.learn()
         
@@ -66,7 +66,7 @@ class TestKLearner(unittest.TestCase):
         """
         Test that BIC scores are correctly calculated and stored.
         """
-        klearner = KLearner(self.trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(self.trajectories, self.discreteTypeProcessor, delimiter='_')
         klearner.learn(max_k=5)
         
         # Get BIC scores
@@ -87,7 +87,7 @@ class TestKLearner(unittest.TestCase):
         """
         Test that the optimal k indeed minimizes the BIC score.
         """
-        klearner = KLearner(self.trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(self.trajectories, self.discreteTypeProcessor, delimiter='_')
         klearner.learn(max_k=5)
         
         bic_scores = klearner.get_bic_scores()
@@ -107,7 +107,7 @@ class TestKLearner(unittest.TestCase):
         """
         Test that log-likelihood methods still work for backward compatibility.
         """
-        klearner = KLearner(self.trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(self.trajectories, self.discreteTypeProcessor, delimiter='_')
         klearner.learn(max_k=4)
         
         # Get log-likelihoods
@@ -123,7 +123,7 @@ class TestKLearner(unittest.TestCase):
         """
         Test that BIC formula is correctly applied.
         """
-        klearner = KLearner(self.trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(self.trajectories, self.discreteTypeProcessor, delimiter='_')
         klearner.learn(max_k=3)
         
         bic_scores = klearner.get_bic_scores()
@@ -137,7 +137,7 @@ class TestKLearner(unittest.TestCase):
         if k_test in bic_scores:
             # Get the learned network for this k
             from Learner import Learner
-            learner = Learner(klearner._filtered_trajectories, self.discretizer, delimiter='_', k=k_test)
+            learner = Learner(klearner._filtered_trajectories, self.discreteTypeProcessor, delimiter='_', k=k_test)
             bn = learner.learn_ktbn()
             
             # Calculate expected BIC
@@ -156,7 +156,7 @@ class TestKLearner(unittest.TestCase):
         trajectories = self.ktbn.sample(n_trajectories=2000, trajectory_len=20)
         
         # Create KLearner
-        klearner = KLearner(trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(trajectories, self.discreteTypeProcessor, delimiter='_')
         
         # Learn the KTBN with optimal k (testing up to k=8)
         ktbn = klearner.learn(max_k=8)
@@ -199,7 +199,7 @@ class TestKLearner(unittest.TestCase):
         Test behavior with empty trajectories.
         """
         empty_trajectories = []
-        klearner = KLearner(empty_trajectories, self.discretizer, delimiter='_')
+        klearner = KLearner(empty_trajectories, self.discreteTypeProcessor, delimiter='_')
         
         # This should handle gracefully without crashing
         with self.assertRaises(Exception):

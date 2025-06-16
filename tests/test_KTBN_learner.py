@@ -1,13 +1,15 @@
 import unittest
 import pandas as pd
 import numpy as np
-from pyAgrum.lib.discretizer import Discretizer
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../ktbn')))
 
-from ktbn import Learner
+
+import Learner
+from KTBN import KTBN
 
 class TestLearner(unittest.TestCase):
 
@@ -27,10 +29,10 @@ class TestLearner(unittest.TestCase):
              })
 
         self.dfs = [self.df1, self.df2]
-        self.discretizer = Discretizer()
+        self.discreteTypeProcessor = DiscreteTypeProcessor()
         self.delimiter = '_'
         self.k = 4  
-        self.learner = Learner.Learner(self.dfs, self.discretizer, self.delimiter, self.k)
+        self.learner = Learner.Learner(self.dfs, self.discreteTypeProcessor, self.delimiter, self.k)
 
     def test_init_learner_valid(self):
         # Test that a Learner initializes correctly 
@@ -72,21 +74,29 @@ class TestLearner(unittest.TestCase):
         # was treated as temporal.
         for i in range(self.k):
             
-            self.assertIn(f'B{self.delimiter}{i}', lags.columns)
-            self.assertIn(f'B{self.delimiter}{i}', first.columns)
-            self.assertIn(f'D{self.delimiter}{i}', lags.columns)
-            self.assertIn(f'D{self.delimiter}{i}', first.columns)
+            self.assertIn(KTBN.encode_name_static('B',i,self.delimiter), lags.columns)
+            self.assertIn(KTBN.encode_name_static('B',i,self.delimiter), first.columns)
+            self.assertIn(KTBN.encode_name_static('D',i,self.delimiter), lags.columns)
+            self.assertIn(KTBN.encode_name_static('D',i,self.delimiter), first.columns)
             
-            self.assertNotIn(f'A{self.delimiter}{i}', lags.columns)
-            self.assertNotIn(f'A{self.delimiter}{i}', first.columns)
-            self.assertNotIn(f'C{self.delimiter}{i}', lags.columns)
-            self.assertNotIn(f'C{self.delimiter}{i}', first.columns)
+            self.assertNotIn(KTBN.encode_name_static('A',i,self.delimiter), lags.columns)
+            self.assertNotIn(KTBN.encode_name_static('A',i,self.delimiter), first.columns)
+            self.assertNotIn(KTBN.encode_name_static('C',i,self.delimiter), lags.columns)
+            self.assertNotIn(KTBN.encode_name_static('C',i,self.delimiter), first.columns)
+
+
+        # Ensure that no extra columns are created
+
+        self.assertNotIn(KTBN.encode_name_static('B',self.k,self.delimiter), lags.columns)
+        self.assertNotIn(KTBN.encode_name_static('B',self.k,self.delimiter), first.columns)
+        self.assertNotIn(KTBN.encode_name_static('D',self.k,self.delimiter), lags.columns)
+        self.assertNotIn(KTBN.encode_name_static('D',self.k,self.delimiter), first.columns)
 
         # Ensure that the length of the first df is 2 (only two trajectories were provided).
         self.assertEqual(len(first), 2)
 
     def test_learn_ktbn_structure(self):
-        ktbn = self.learner.learn_ktbn()
+        ktbn = self.learner.learn_ktbn().to_bn()
 
         # Check that the KTBN contains temporal variables from all time slices.
         for col in self.learner._temporal_vars:

@@ -1,6 +1,6 @@
 import copy
 import random
-import pyAgrum as gum
+import pyagrum as gum
 import pandas as pd
 import os
 import numpy as np
@@ -634,6 +634,15 @@ class KTBN:
         """
         return self._bn.idFromName(self.encode_name(name, time_slice))
     
+    def names(self) -> set[str]:
+        """
+        Returns the set of variable names in the KTBN, excluding time slice annotations.
+
+        Returns:
+            set[str]: Set of unique variable names without time slices.
+        """
+
+        return self._atemporal_variables.union(self._temporal_variables) 
 
     def _get_value_from_trajectory(self, trajectory, var_base, time_slice):
         """

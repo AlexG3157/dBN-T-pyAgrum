@@ -1,5 +1,5 @@
 import re
-import pyAgrum as gum
+import pyagrum as gum
 import numpy as np
 from typing import Tuple
 

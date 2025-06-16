@@ -1,6 +1,6 @@
 import pandas as pd
-import pyAgrum as gum
-from pyAgrum.lib.discretizer import Discretizer
+import pyagrum as gum
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 from typing import List, Set
 from typing import Tuple
 from KTBN import KTBN
@@ -9,13 +9,13 @@ class Learner():
     """
     A class for learning a K-Time Slice Bayesian Network (KTBN) from trajectory data.
     """
-    def __init__(self, dfs : List[pd.DataFrame], discretizer : Discretizer,delimiter : str = '#', k : int = -1 ):
+    def __init__(self, dfs : List[pd.DataFrame], discreteTypeProcessor : DiscreteTypeProcessor,delimiter : str = '#', k : int = -1 ):
         """
         Initializes the learner with trajectory data and parameters.
 
         Args:
             dfs (List[pd.DataFrame]): A list of trajectory datasets for learning the KTBN.
-            discretizer (Discretizer): A discretizer used for template generation.
+            discreteTypeProcessor (DiscreteTypeProcessor): A DiscreteTypeProcessor used for template generation.
             delimiter (str, optional): The separator between variable names and time slices. Defaults to '_'.
             k (int, optional): The k for the ktbn. Defaults to -1.
 
@@ -34,7 +34,7 @@ class Learner():
         
         self._lags, self._first_rows = _create_sequences(dfs, k, delimiter, self._temporal_vars, self._atemporal_vars)
 
-        self._first_template, self._lags_template = _create_templates(discretizer,dfs, delimiter,k, self._temporal_vars, self._atemporal_vars)
+        self._first_template, self._lags_template = _create_templates(discreteTypeProcessor,dfs, delimiter,k, self._temporal_vars, self._atemporal_vars)
         
         self._lags_learner = gum.BNLearner(self._lags, self._lags_template)
         self._first_learner = gum.BNLearner(self._first_rows, self._first_template)
@@ -122,7 +122,7 @@ class Learner():
 
         Raises:
             ValueError: If the arc violates time slice constraints (i.e., points from future to past).
-            pyAgrum.InvalidDetectedCycle: If adding the arc creates a directed cycle in the graph.
+            pyagrum.InvalidDetectedCycle: If adding the arc creates a directed cycle in the graph.
         """
 
         _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
@@ -560,16 +560,26 @@ def _create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal
 
     # Variable types
     types = dfs[0].dtypes
-    unrolled_types = {f'{col}{delimiter}{i}': types[col] for col in temporal_variables for i in range(k)}
+    unrolled_types = {
+        KTBN.encode_name_static(col, i, delimiter): types[col]
+        for col in temporal_variables
+        for i in range(k)
+    }
+
     unrolled_types.update(types[atemporal_variables])
 
     # Temporal sequences 
 
     temporal_dfs = [df[temporal_variables] for df in dfs]
-    temp_sequences = [
-        pd.concat([df.shift(-i).add_suffix(f"{delimiter}{i}").reset_index(drop=True) for i in range(k)], axis=1) 
-        for df in temporal_dfs
-    ]
+
+    temp_sequences = []
+    for df in temporal_dfs:
+        shifted_versions = []
+        for i in range(k):
+            shifted = df.shift(-i).copy()
+            shifted.columns = [KTBN.encode_name_static(col, i, delimiter) for col in df.columns]
+            shifted_versions.append(shifted.reset_index(drop=True))
+        temp_sequences.append(pd.concat(shifted_versions, axis=1))
 
     # Atemporal and temporal sequences
     sequences = [pd.concat([df[atemporal_variables], temp], axis = 1) for (df, temp) in zip(dfs, temp_sequences)]
@@ -581,7 +591,7 @@ def _create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal
     return lags, first_rows
 
 def _create_templates(
-    discretizer: Discretizer,
+    discreteTypeProcessor: DiscreteTypeProcessor,
     dfs: List[pd.DataFrame],
     delimiter: str,
     k: int,
@@ -596,7 +606,7 @@ def _create_templates(
     - `lags_template`: Represents the full network up to time `k`.
 
     Args:
-        discretizer (Discretizer): The discretizer used to create the templates.
+        discreteTypeProcessor (DiscreteTypeProcessor): The DiscreteTypeProcessor used to create the templates.
         dfs (List[pd.DataFrame]): The dataset containing trajectories.
         delimiter (str): Delimiter separating variable names from time indices.
         k (int): The k to use.
@@ -610,7 +620,7 @@ def _create_templates(
     """
 
     db = pd.concat(dfs, axis = 0).reset_index(drop=True)
-    static_template = discretizer.discretizedTemplate(db)
+    static_template = discreteTypeProcessor.discretizedTemplate(db)
     
     lags_template = gum.BayesNet()
     first_template = gum.BayesNet()

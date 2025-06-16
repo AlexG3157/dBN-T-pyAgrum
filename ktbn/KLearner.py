@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 
-import pyAgrum as gum
-from pyAgrum.lib.discretizer import Discretizer
+import pyagrum as gum
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 
 from typing import List, Optional, Dict
 
@@ -16,17 +16,17 @@ class KLearner:
     It finds the optimal k by minimizing the BIC score of the trajectories given the model.
     """
     
-    def __init__(self, trajectories: List[pd.DataFrame], discretizer: Discretizer, delimiter: str = '#'):
+    def __init__(self, trajectories: List[pd.DataFrame], discreteTypeProcessor: DiscreteTypeProcessor, delimiter: str = '#'):
         """
         Initialize the KLearner.
         
         Args:
             trajectories (List[pd.DataFrame]): List of trajectories.
-            discretizer (Discretizer): Discretizer for template generation.
+            discreteTypeProcessor (DiscreteTypeProcessor): DiscreteTypeProcessor for template generation.
             delimiter (str, optional): Delimiter for variable names. Defaults to '#'.
         """
         self.trajectories = trajectories
-        self._discretizer = discretizer
+        self._discreteTypeProcessor = discreteTypeProcessor
         self.delimiter = delimiter
         self._best_k = None
         self._best_ktbn = None
@@ -54,7 +54,7 @@ class KLearner:
         best_ktbn = None
                 
         for k in range(2, max_k + 1):
-            learner = Learner(self._filtered_trajectories, self._discretizer, delimiter=self.delimiter, k=k)
+            learner = Learner(self._filtered_trajectories, self._discreteTypeProcessor, delimiter=self.delimiter, k=k)
             ktbn = learner.learn_ktbn()
             
             # Calculer le score BIC

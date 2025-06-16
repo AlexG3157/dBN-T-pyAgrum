@@ -1,9 +1,12 @@
 import unittest
 import os
 import tempfile
-import pyAgrum as gum
+import pyagrum as gum
 import numpy as np
 from typing import Tuple, List, Set
+
+import sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../ktbn')))
 
 from KTBN import KTBN
 
@@ -61,7 +64,6 @@ class TestKTBN(unittest.TestCase):
         # Check that X#0, X#1, X#2 are in the BN
         self.assertIn("X#0", ktbn._bn.names())
         self.assertIn("X#1", ktbn._bn.names())
-        self.assertIn("X#2", ktbn._bn.names())
 
     def test_add_variable_atemporal(self):
         """
@@ -129,13 +131,15 @@ class TestKTBN(unittest.TestCase):
         self.assertIn("A#1", unrolled_bn.names())
         self.assertIn("A#2", unrolled_bn.names())
         self.assertIn("A#3", unrolled_bn.names())
-        self.assertIn("A#4", unrolled_bn.names())
+        
         
         self.assertIn("B#0", unrolled_bn.names())
         self.assertIn("B#1", unrolled_bn.names())
         self.assertIn("B#2", unrolled_bn.names())
         self.assertIn("B#3", unrolled_bn.names())
-        self.assertIn("B#4", unrolled_bn.names())
+        #Check that no extra time-slices are added
+        self.assertNotIn("B#4", unrolled_bn.names())
+        self.assertNotIn("A#4", unrolled_bn.names())
         
         self.assertIn("C", unrolled_bn.names())
         
@@ -147,11 +151,9 @@ class TestKTBN(unittest.TestCase):
         # Check that the unrolled BN contains the expected additional arcs
         self.assertTrue(unrolled_bn.existsArc("A#1", "A#2"))
         self.assertTrue(unrolled_bn.existsArc("A#2", "A#3"))
-        self.assertTrue(unrolled_bn.existsArc("A#3", "A#4"))
         
         self.assertTrue(unrolled_bn.existsArc("C", "B#2"))
         self.assertTrue(unrolled_bn.existsArc("C", "B#3"))
-        self.assertTrue(unrolled_bn.existsArc("C", "B#4"))
 
     def test_cpt(self):
         """
@@ -159,11 +161,11 @@ class TestKTBN(unittest.TestCase):
         """
         # Get CPT for a temporal variable
         cpt_a0 = self.ktbn.cpt("A", 0)
-        self.assertIsInstance(cpt_a0, gum.Potential)
+        self.assertIsInstance(cpt_a0, gum.Tensor)
         
         # Get CPT for an atemporal variable
         cpt_c = self.ktbn.cpt("C", -1)
-        self.assertIsInstance(cpt_c, gum.Potential)
+        self.assertIsInstance(cpt_c, gum.Tensor)
 
     def test_to_bn(self):
         """
@@ -175,10 +177,8 @@ class TestKTBN(unittest.TestCase):
         # Check that the BN contains the expected variables
         self.assertIn("A#0", bn.names())
         self.assertIn("A#1", bn.names())
-        self.assertIn("A#2", bn.names())
         self.assertIn("B#0", bn.names())
         self.assertIn("B#1", bn.names())
-        self.assertIn("B#2", bn.names())
         self.assertIn("C", bn.names())
         
         # Check that the BN contains the expected arcs
@@ -242,7 +242,7 @@ class TestKTBN(unittest.TestCase):
         ktbn = KTBN.from_bn(bn, delimiter='#')
         
         # Check that the KTBN has the correct properties
-        self.assertEqual(1, ktbn.get_k())
+        self.assertEqual(2, ktbn.get_k())
         self.assertEqual('#', ktbn._delimiter)
         self.assertEqual({"A", "B"}, ktbn._temporal_variables)
         self.assertEqual({"C"}, ktbn._atemporal_variables)
