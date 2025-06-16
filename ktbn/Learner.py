@@ -10,7 +10,7 @@ class Learner():
     """
     A class for learning a K-Time Slice Bayesian Network (KTBN) from trajectory data.
     """
-    def __init__(self, dfs : List[pd.DataFrame], discreteTypeProcessor : DiscreteTypeProcessor,delimiter : str = '#', k : int = -1 ):
+    def __init__(self, dfs : List[pd.DataFrame], discreteTypeProcessor : DiscreteTypeProcessor,delimiter : str = '_', k : int = -1 ):
         """
         Initializes the learner with trajectory data and parameters.
 
