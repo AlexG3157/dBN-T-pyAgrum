@@ -173,7 +173,16 @@ class Learner():
             name = KTBN.encode_name_static(col,self._k-1,self._delimiter)
             bn.cpt(name).fillWith(lags_bn.cpt(name), bn.cpt(name).names)
 
-        return KTBN.from_bn(bn, delimiter=self._delimiter)
+        self._learned_ktbn = KTBN.from_bn(bn, delimiter=self._delimiter)
+        return self._learned_ktbn
+    
+    def get_learned_ktbn(self) -> 'KTBN':
+        """
+        Returns:
+            KTBN: The learned KTBN, if learn_ktbn() has been called.
+        """
+        return self._learned_ktbn
+        
 
     def get_delimiter(self) -> str:
         """
@@ -638,7 +647,6 @@ class Learner():
         self._lags_learner.useScoreLog2Likelihood()
         self._first_learner.useScoreLog2Likelihood()
     
-
     def _encode_head_tail(self, tail : Tuple[str,int]|str, head : Tuple[str,int]) -> Tuple[str,str]:
         """
         Encodes a (variable, time slice) tuple or atemporal variable into its corresponding 
