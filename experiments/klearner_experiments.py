@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../k
 
 from KTBN import KTBN
 from KLearner import KLearner
-from pyAgrum.lib.discretizer import Discretizer
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 
 
 # Log functions
@@ -89,7 +89,7 @@ for mods in n_mods_range:
                                 trajs = true_ktbn.sample(n_traj, traj_length)
 
                                 # Learning k using KLearner
-                                klearner = KLearner(trajs, Discretizer(), delimiter='_')
+                                klearner = KLearner(trajs, DiscreteTypeProcessor(), delimiter='_')
 
                                 learning_start_time = time.perf_counter()
                                 learned_ktbn = klearner.learn(max_k)

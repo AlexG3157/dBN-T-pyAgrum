@@ -1,6 +1,6 @@
 import copy
 import random
-import pyAgrum as gum
+import pyagrum as gum
 import pandas as pd
 import os
 import numpy as np
@@ -365,7 +365,7 @@ class KTBN:
         self._bn.saveBIFXML(filename) 
     
     @classmethod
-    def load(cls, filename: str) -> 'KTBN':
+    def load(cls, filename: str, delimiter = '$') -> 'KTBN':
         """
         Loads a KTBN from a BIFXML file.
         
@@ -380,8 +380,6 @@ class KTBN:
         
         # loadBN works with various formats including BIFXML
         bn = gum.loadBN(filename)
-        
-        delimiter = '#'
         
         temporal_variables = set()
         atemporal_variables = set()
@@ -409,7 +407,7 @@ class KTBN:
         return ktbn
     
     @classmethod
-    def from_bn(cls, bn: gum.BayesNet, delimiter: str = '#') -> 'KTBN':
+    def from_bn(cls, bn: gum.BayesNet, delimiter: str = '$') -> 'KTBN':
         """
         Creates a KTBN from an existing Bayesian network.
         
@@ -556,7 +554,7 @@ class KTBN:
         return df
         
     @staticmethod
-    def random(k : int, n_vars : int, n_mods : int, n_arcs : int, delimiter = '#') -> 'KTBN':
+    def random(k : int, n_vars : int, n_mods : int, n_arcs : int, delimiter = '$') -> 'KTBN':
         """
         Generates a random KTBN with hyperparameter k, n_vars number of variables
         with each n_mods number of modalities.
@@ -634,6 +632,15 @@ class KTBN:
         """
         return self._bn.idFromName(self.encode_name(name, time_slice))
     
+    def names(self) -> set[str]:
+        """
+        Returns the set of variable names in the KTBN, excluding time slice annotations.
+
+        Returns:
+            set[str]: Set of unique variable names without time slices.
+        """
+
+        return self._atemporal_variables.union(self._temporal_variables) 
 
     def _get_value_from_trajectory(self, trajectory, var_base, time_slice):
         """

@@ -1,7 +1,8 @@
+import numpy as np
 import pandas as pd
-import pyAgrum as gum
-from pyAgrum.lib.discretizer import Discretizer
-from typing import List, Set
+import pyagrum as gum
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
+from typing import Dict, List, Optional, Set
 from typing import Tuple
 from KTBN import KTBN
 
@@ -9,43 +10,118 @@ class Learner():
     """
     A class for learning a K-Time Slice Bayesian Network (KTBN) from trajectory data.
     """
-    def __init__(self, dfs : List[pd.DataFrame], discretizer : Discretizer,delimiter : str = '#', k : int = -1 ):
+    def __init__(self, dfs : List[pd.DataFrame], discreteTypeProcessor : DiscreteTypeProcessor,delimiter : str = '$', k : int = None ):
         """
         Initializes the learner with trajectory data and parameters.
 
         Args:
             dfs (List[pd.DataFrame]): A list of trajectory datasets for learning the KTBN.
-            discretizer (Discretizer): A discretizer used for template generation.
+            discreteTypeProcessor (DiscreteTypeProcessor): A DiscreteTypeProcessor used for template generation.
             delimiter (str, optional): The separator between variable names and time slices. Defaults to '_'.
-            k (int, optional): The k for the ktbn. Defaults to -1.
+            k (int, optional): The k for the ktbn. Defaults to None for automatic learning of K.
 
         Raises:
-            NotImplementedError: If `k=-1`, as automatic k learning is not yet supported.
+            ValueError: If a constant variable exists in the dfs and k is not given.
         """
-        if k == -1:
 
-            raise NotImplementedError("Learning the hyperparameter k is not yet supported!")
-        
-        self._k = k
         self._delimiter = delimiter
+        self._discreteTypeProcessor = discreteTypeProcessor
+
+        self._dfs = dfs
+        self._data_points = self._count_data_points()
 
         self._atemporal_vars = [col for col in dfs[0].columns if _is_atemporal(dfs, col)]
         self._temporal_vars = [col for col in dfs[0].columns if col not in self._atemporal_vars]
-        
-        self._lags, self._first_rows = _create_sequences(dfs, k, delimiter, self._temporal_vars, self._atemporal_vars)
 
-        self._first_template, self._lags_template = _create_templates(discretizer,dfs, delimiter,k, self._temporal_vars, self._atemporal_vars)
-        
-        self._lags_learner = gum.BNLearner(self._lags, self._lags_template)
-        self._first_learner = gum.BNLearner(self._first_rows, self._first_template)
+        self._best_bic_score = None
+        self._bic_scores = None
+        self._log_likelihoods = None
+        self._learned_ktbn = None
+        self._lags_learner = None
+        self._first_learner = None
 
-    
-    def learn_ktbn(self) -> gum.BayesNet:
+        if k == None:
+            self._k = None
+            self._detect_constant_variables()
+        
+        else:
+            self._init_learners(k)
+
+    def _init_learners(self, k : int):
         """
-        Learns a KTBN from a list of trajectories.
+        Generates sequences and initializes learners according to k.
+
+        Args:
+            k (int): The parameter K of the KTBN.
+        """
+
+        self._k = k
+
+        self._lags, self._first_rows = _create_sequences(self._dfs, k, self._delimiter, self._temporal_vars, self._atemporal_vars)
+
+        self._first_template, self._lags_template = _create_templates(self._discreteTypeProcessor,self._dfs, self._delimiter,k, self._temporal_vars, self._atemporal_vars)
+        
+        
+        lags_learner = gum.BNLearner(self._lags, self._lags_template)
+        first_learner = gum.BNLearner(self._first_rows, self._first_template)
+
+        if self._lags_learner != None:
+            lags_learner.copyState(self._lags_learner)
+            first_learner.copyState(self._first_learner)
+
+        self._lags_learner= lags_learner
+        self._first_learner = first_learner
+
+    def learn_ktbn(self, max_k = 10) -> 'KTBN':
+        """
+        Learns a KTBN from a list of trajectories. If k=-1, it also finds the optimal K.
+
+        Args:
+            max_k (int, optional): The maximum K to test if k is not given. Defaults to 10.
 
         Returns:
-            gum.BayesNet: The learned ktBN
+            KTBN: The learned KTBN
+        """
+        if self._k != None:
+            return self._learn()
+        
+        best_bic_score = float('inf')  # Minimiser le BIC
+        best_k = None
+        best_ktbn = None
+        self._bic_scores = dict()
+        self._log_likelihoods = dict()
+                
+        for k in range(2, max_k + 1):
+
+            self._init_learners(k)
+            ktbn = self._learn()
+            
+            # Calculer le score BIC
+            bic_score = self._calculate_bic_score(ktbn)
+            self._bic_scores[k] = bic_score
+            
+            # Garder également la log-vraisemblance pour compatibilité
+            log_likelihood = ktbn.log_likelihood(self._dfs)
+            self._log_likelihoods[k] = log_likelihood
+            
+            # Garder le k qui minimise le BIC
+            if bic_score < best_bic_score:
+                best_bic_score = bic_score
+                best_k = k
+                best_ktbn = ktbn
+        
+        self._k= best_k
+        self._learned_ktbn= best_ktbn
+        self._best_bic_score = best_bic_score
+
+        return best_ktbn
+
+    def _learn(self) -> 'KTBN':
+        """
+        Learns a KTBN from a list of trajectories, given k.
+
+        Returns:
+            KTBN: The learned KTBN
         """
 
         # Atemporal variables can't have parents.
@@ -97,7 +173,16 @@ class Learner():
             name = KTBN.encode_name_static(col,self._k-1,self._delimiter)
             bn.cpt(name).fillWith(lags_bn.cpt(name), bn.cpt(name).names)
 
-        return KTBN.from_bn(bn, delimiter=self._delimiter)
+        self._learned_ktbn = KTBN.from_bn(bn, delimiter=self._delimiter)
+        return self._learned_ktbn
+    
+    def get_learned_ktbn(self) -> 'KTBN':
+        """
+        Returns:
+            KTBN: The learned KTBN, if learn_ktbn() has been called.
+        """
+        return self._learned_ktbn
+        
 
     def get_delimiter(self) -> str:
         """
@@ -109,6 +194,40 @@ class Learner():
 
         return self._delimiter
     
+    def get_log_likelihoods(self) -> Optional[Dict[int, float]]:
+        """
+        Get the log-likelihoods for each k tested.
+        
+        Returns:
+            Dict[int, float]: Dictionary mapping k to log-likelihood. None if k was given.
+        """
+        return self._log_likelihoods
+    
+    def get_bic_scores(self) -> Optional[Dict[int, float]]:
+        """
+        Get the BIC scores for each k tested.
+        
+        Returns:
+            Dict[int, float]: Dictionary mapping k to BIC score. None if k was given.
+        """
+        return self._bic_scores
+    
+    def get_best_bic_score(self) -> Optional[float]:
+        """
+        Get the best BIC score found.
+        
+        Returns:
+            Optional[float]: Best BIC score or None if learn_KTBN() has not been called or k was given.
+        """
+        return self._best_bic_score
+
+    def get_k(self) -> int:
+        """
+        Returns:
+            int: The parameter k of the KTBN, -1 if it has not been learned.
+        """
+        return self._k
+
     def addMandatoryArc(self, tail : Tuple[str, int] | str, head : Tuple[str, int]):
         """
         Adds a mandatory arc from `tail` to `head` in the KTBN structure.
@@ -122,11 +241,14 @@ class Learner():
 
         Raises:
             ValueError: If the arc violates time slice constraints (i.e., points from future to past).
-            pyAgrum.InvalidDetectedCycle: If adding the arc creates a directed cycle in the graph.
+            pyagrum.InvalidDetectedCycle: If adding the arc creates a directed cycle in the graph.
         """
-
+        ValueError
         _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
+        if self._k == -1:
+            raise RuntimeError("Cannot add mandatory arcs if k is not set.")
+
         tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.addMandatoryArc(tail_name, head_name)
         
@@ -150,6 +272,9 @@ class Learner():
 
         _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
+        if self._k == -1:
+            raise RuntimeError("Cannot erase mandatory arcs if k is not set.")
+
         tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.eraseMandatoryArc(tail_name, head_name)
         
@@ -172,6 +297,9 @@ class Learner():
         """
         _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
+        if self._k == -1:
+            raise RuntimeError("Cannot add forbidden arcs if k is not set.")
+
         tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.addForbiddenArc(tail_name, head_name)
         
@@ -194,6 +322,9 @@ class Learner():
         """
         _verify_timeslice(tail[1] if type(tail) == tuple else -1, head[1])
         
+        if self._k == -1:
+            raise RuntimeError("Cannot erase forbidden arcs if k is not set.")
+
         tail_name, head_name = self._encode_head_tail(tail,head)
         self._lags_learner.eraseForbiddenArc(tail_name, head_name)
         
@@ -219,6 +350,9 @@ class Learner():
         Args:
             node (Tuple[str,int]): The node to constrain, as (name, time slice).
         """
+        if self._k == -1:
+            raise RuntimeError("Cannot add no children node if k is not set.")
+
         name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
         self._lags_learner.addNoChildrenNode(name)
 
@@ -232,6 +366,9 @@ class Learner():
         Args:
             node (Tuple[str,int]): The node to constraint, as (name, time slice).
         """
+        if self._k == -1:
+            raise RuntimeError("Cannot add no parent node if k is not set.")
+
         name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
         self._lags_learner.addNoParentNode(name)
 
@@ -246,6 +383,9 @@ class Learner():
             tail (str | int): The parent variable, either static (str) or time-dependent (int).
             head (str | int): The child variable, either static (str) or time-dependent (int).
         """
+        if self._k == -1:
+            raise RuntimeError("Cannot add possible edges if k is not set.")
+
         tail_name, head_name = self._encode_head_tail(tail, head)
         self._lags_learner.addPossibleEdge(tail_name, head_name)
 
@@ -260,6 +400,9 @@ class Learner():
             node (Tuple[str, int]): The node whose constraint should be removed, as (name, time slice). 
         """
         
+        if self._k == -1:
+            raise RuntimeError("Cannot erase no children node if k is not set.")
+            
         name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
         self._lags_learner.eraseNoChildrenNode(name)
         if node[1] < self._k -1:
@@ -272,6 +415,8 @@ class Learner():
         Args:
             node (Tuple[str,int]): The node whose constraint should be removed, as (name, time slice). 
         """
+        if self._k == -1:
+            raise RuntimeError("Cannot erase no parent node if k is not set.")
         
         name = KTBN.encode_name_static(node[0], node[1], self._delimiter)
         self._lags_learner.eraseNoParentNode(name)
@@ -286,6 +431,8 @@ class Learner():
             tail (Tuple[str, int] | str): A node (name, time slice)
             head (Tuple[str,int]): A node (name, time slice)
         """
+        if self._k == -1:
+            raise RuntimeError("Cannot erase possible edge if k is not set.")
 
         tail_name, head_name = self._encode_head_tail(tail, head)
         self._lags_learner.erasePossibleEdge(tail_name, head_name)
@@ -325,6 +472,7 @@ class Learner():
         Args:
             max_indegree (int): The limit number of parents. 
         """
+
         self._first_learner.setMaxIndegree(max_indegree)
         self._lags_learner.setMaxIndegree(max_indegree)
 
@@ -338,6 +486,9 @@ class Learner():
             edges (Set[Tuple[Tuple[str, int], Tuple[str, int]]]): 
                 A set of edges represented as ((tail_var, tail_time), (head_var, head_time)) tuples.
         """
+
+        if self._k == -1:
+            raise RuntimeError("Cannot set possible edges if k is not set.")
 
         first_id_set = set()
         lags_id_set = set()
@@ -369,6 +520,9 @@ class Learner():
         Args:
             skeleton (gum.UndiGraph): The skeleton as a `gum.UndiGraph`
         """
+        if self._k == -1:
+            raise RuntimeError("Cannot set possible skeleton if k is not set.")
+
         edges = skeleton.edges()
         first = {(t,h) for (t,h) in edges if self._first_template.exists(t) and self._first_template.exists(h)}
         
@@ -493,7 +647,6 @@ class Learner():
         self._lags_learner.useScoreLog2Likelihood()
         self._first_learner.useScoreLog2Likelihood()
     
-
     def _encode_head_tail(self, tail : Tuple[str,int]|str, head : Tuple[str,int]) -> Tuple[str,str]:
         """
         Encodes a (variable, time slice) tuple or atemporal variable into its corresponding 
@@ -513,6 +666,69 @@ class Learner():
 
         return tail_name, head_name
     
+    def _detect_constant_variables(self):
+        """
+        Detect if there are variables that are constant across all trajectories.
+
+        Raises:
+            ValueError: If a constant variable exists in the dfs.
+
+        """
+        
+        for col in self._dfs[0].columns:
+            all_values = set()
+            
+            # Collect all unique values across all trajectories
+            for df in self._dfs:
+                all_values.update(df[col].unique())
+            
+            # If only one unique value, variable is constant
+            if len(all_values) == 1:
+                raise ValueError("Variables shouldn't be constant across all trajectories.")
+    
+    def _calculate_bic_score(self, ktbn: KTBN) -> float:
+        """
+        Calculate the BIC score for a given KTBN.
+        
+        BIC = k * ln(n) - 2 * ln(L̂)
+        where k = number of parameters, n = number of data points, L̂ = likelihood
+        
+        Args:
+            ktbn (KTBN): The KTBN model
+            trajectories (List[pd.DataFrame]): The trajectories
+            
+        Returns:
+            float: BIC score (lower is better)
+        """
+        bn = ktbn.to_bn()
+        
+        # Log-vraisemblance
+        log_likelihood = ktbn.log_likelihood(self._dfs)
+        
+        # Nombre de paramètres (dimension du réseau)
+        k_params = bn.dim()
+        
+        # Nombre total de points de données
+        n_data_points = self._data_points
+        
+        # Formule BIC
+        bic_score = k_params * np.log(n_data_points) - 2 * log_likelihood
+        
+        return bic_score
+    
+    def _count_data_points(self) -> int:
+        """
+        Calculate the total number of data points across all trajectories.
+        
+            
+        Returns:
+            int: n_trajectories × trajectory_len
+        """
+
+        total_points = 0
+        for trajectory in self._dfs:
+            total_points += len(trajectory)
+        return total_points
 
 
 def _is_atemporal(dfs: List[pd.Series], column: str | int) -> bool:
@@ -560,16 +776,26 @@ def _create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal
 
     # Variable types
     types = dfs[0].dtypes
-    unrolled_types = {f'{col}{delimiter}{i}': types[col] for col in temporal_variables for i in range(k)}
+    unrolled_types = {
+        KTBN.encode_name_static(col, i, delimiter): types[col]
+        for col in temporal_variables
+        for i in range(k)
+    }
+
     unrolled_types.update(types[atemporal_variables])
 
     # Temporal sequences 
 
     temporal_dfs = [df[temporal_variables] for df in dfs]
-    temp_sequences = [
-        pd.concat([df.shift(-i).add_suffix(f"{delimiter}{i}").reset_index(drop=True) for i in range(k)], axis=1) 
-        for df in temporal_dfs
-    ]
+
+    temp_sequences = []
+    for df in temporal_dfs:
+        shifted_versions = []
+        for i in range(k):
+            shifted = df.shift(-i).copy()
+            shifted.columns = [KTBN.encode_name_static(col, i, delimiter) for col in df.columns]
+            shifted_versions.append(shifted.reset_index(drop=True))
+        temp_sequences.append(pd.concat(shifted_versions, axis=1))
 
     # Atemporal and temporal sequences
     sequences = [pd.concat([df[atemporal_variables], temp], axis = 1) for (df, temp) in zip(dfs, temp_sequences)]
@@ -581,7 +807,7 @@ def _create_sequences(dfs: List[pd.DataFrame], k: int, delimiter : str, temporal
     return lags, first_rows
 
 def _create_templates(
-    discretizer: Discretizer,
+    discreteTypeProcessor: DiscreteTypeProcessor,
     dfs: List[pd.DataFrame],
     delimiter: str,
     k: int,
@@ -596,7 +822,7 @@ def _create_templates(
     - `lags_template`: Represents the full network up to time `k`.
 
     Args:
-        discretizer (Discretizer): The discretizer used to create the templates.
+        discreteTypeProcessor (DiscreteTypeProcessor): The DiscreteTypeProcessor used to create the templates.
         dfs (List[pd.DataFrame]): The dataset containing trajectories.
         delimiter (str): Delimiter separating variable names from time indices.
         k (int): The k to use.
@@ -610,7 +836,7 @@ def _create_templates(
     """
 
     db = pd.concat(dfs, axis = 0).reset_index(drop=True)
-    static_template = discretizer.discretizedTemplate(db)
+    static_template = discreteTypeProcessor.discretizedTemplate(db)
     
     lags_template = gum.BayesNet()
     first_template = gum.BayesNet()

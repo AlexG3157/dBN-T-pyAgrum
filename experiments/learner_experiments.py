@@ -1,6 +1,6 @@
-import pyAgrum as gum
-import pyAgrum.lib.bn_vs_bn as gcm
-from pyAgrum.lib.discretizer import Discretizer
+import pyagrum as gum
+import pyagrum.lib.bn_vs_bn as gcm
+from pyagrum.lib.discreteTypeProcessor import DiscreteTypeProcessor
 
 import pandas as pd
 
@@ -87,7 +87,7 @@ for mods in n_mods_range:
                             trajs = true_ktbn.sample(n_traj, traj_length)
 
                             # Learning with fixed k using Learner
-                            learner = Learner(trajs, Discretizer(), delimiter='_', k=k)
+                            learner = Learner(trajs, DiscreteTypeProcessor(), delimiter='_', k=k)
 
                             learning_start_time = time.perf_counter()
                             learned_ktbn = learner.learn_ktbn()

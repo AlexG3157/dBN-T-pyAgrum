@@ -1,5 +1,5 @@
-import pyAgrum as gum
-import pyAgrum.lib.notebook as gnb
+import pyagrum as gum
+import pyagrum.lib.notebook as gnb
 from KTBN import KTBN
 import pydot as dot
 
@@ -30,7 +30,7 @@ def show_unroll(ktbn, n, **kwargs):
 def show_time_slice(ktbn, **kwargs):
     """
     Display all time slices of a KTBN in the notebook with variables grouped by time slice.
-    Similar to pyAgrum's showTimeSlices function for dynamic Bayesian networks.
+    Similar to pyagrum's showTimeSlices function for dynamic Bayesian networks.
     
     Args:
         ktbn (KTBN): The KTBN to display
