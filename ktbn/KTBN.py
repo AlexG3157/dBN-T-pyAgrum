@@ -365,7 +365,7 @@ class KTBN:
         self._bn.saveBIFXML(filename) 
     
     @classmethod
-    def load(cls, filename: str, delimiter = '_') -> 'KTBN':
+    def load(cls, filename: str, delimiter = '$') -> 'KTBN':
         """
         Loads a KTBN from a BIFXML file.
         
@@ -407,7 +407,7 @@ class KTBN:
         return ktbn
     
     @classmethod
-    def from_bn(cls, bn: gum.BayesNet, delimiter: str = '_') -> 'KTBN':
+    def from_bn(cls, bn: gum.BayesNet, delimiter: str = '$') -> 'KTBN':
         """
         Creates a KTBN from an existing Bayesian network.
         
@@ -554,7 +554,7 @@ class KTBN:
         return df
         
     @staticmethod
-    def random(k : int, n_vars : int, n_mods : int, n_arcs : int, delimiter = '_') -> 'KTBN':
+    def random(k : int, n_vars : int, n_mods : int, n_arcs : int, delimiter = '$') -> 'KTBN':
         """
         Generates a random KTBN with hyperparameter k, n_vars number of variables
         with each n_mods number of modalities.

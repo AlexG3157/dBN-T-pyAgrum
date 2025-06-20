@@ -10,7 +10,7 @@ class Learner():
     """
     A class for learning a K-Time Slice Bayesian Network (KTBN) from trajectory data.
     """
-    def __init__(self, dfs : List[pd.DataFrame], discreteTypeProcessor : DiscreteTypeProcessor,delimiter : str = '_', k : int = -1 ):
+    def __init__(self, dfs : List[pd.DataFrame], discreteTypeProcessor : DiscreteTypeProcessor,delimiter : str = '$', k : int = None ):
         """
         Initializes the learner with trajectory data and parameters.
 
@@ -18,7 +18,7 @@ class Learner():
             dfs (List[pd.DataFrame]): A list of trajectory datasets for learning the KTBN.
             discreteTypeProcessor (DiscreteTypeProcessor): A DiscreteTypeProcessor used for template generation.
             delimiter (str, optional): The separator between variable names and time slices. Defaults to '_'.
-            k (int, optional): The k for the ktbn. Defaults to -1.
+            k (int, optional): The k for the ktbn. Defaults to None for automatic learning of K.
 
         Raises:
             ValueError: If a constant variable exists in the dfs and k is not given.
@@ -40,8 +40,8 @@ class Learner():
         self._lags_learner = None
         self._first_learner = None
 
-        if k == -1:
-            self._k = -1
+        if k == None:
+            self._k = None
             self._detect_constant_variables()
         
         else:
@@ -82,7 +82,7 @@ class Learner():
         Returns:
             KTBN: The learned KTBN
         """
-        if self._k != -1:
+        if self._k != None:
             return self._learn()
         
         best_bic_score = float('inf')  # Minimiser le BIC
