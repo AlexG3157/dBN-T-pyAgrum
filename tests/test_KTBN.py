@@ -199,7 +199,7 @@ class TestKTBN(unittest.TestCase):
         self.ktbn.save(tmp_path)
             
         # Load the KTBN
-        loaded_ktbn = KTBN.load(tmp_path)
+        loaded_ktbn = KTBN.load(tmp_path, delimiter = self.delimiter)
             
         # Check that the loaded KTBN has the same properties
         self.assertEqual(self.ktbn.get_k(), loaded_ktbn.get_k())

@@ -19,7 +19,7 @@
 \usepackage{listings}
 \usepackage{xcolor}  
 
-\title{Implémentation et validation de réseaux bayésiens dynamiques d'ordre T avec pyagrum}
+\title{Implémentation et apprentissage de réseaux bayésiens dynamiques d'ordre K avec pyAgrum}
 \author{Jad CHAMSEDDINE \and Jesus Alejandro GOMEZ URZUA}
 
 \setlength{\parindent}{0pt}
@@ -52,7 +52,7 @@
 
 Les réseaux bayésiens (BN) constituent un cadre formel puissant pour la représentation de connaissances et le raisonnement
 probabiliste. Ils modélisent des relations de dépendance conditionnelle entre variables aléatoires au moyen d'un graphe
-orienté acyclique associé à une factorisation de la probabilité jointe. En intelligence artificielle, ils sont utilisés
+orienté sans circuit associé à une factorisation de la probabilité jointe. En intelligence artificielle, ils sont utilisés
 avec succès dans des domaines aussi variés que la classification d'échantillons biologiques\cite{doi:10.1021/jf9013235}
 la modélisation du risque en agriculture\cite{BRESSAN2009579} ou encore l'analyse de systèmes de sécurité
 industrielle\cite{KANNAN2007255}.
@@ -62,13 +62,13 @@ au cours du temps. Cette extension permet de représenter des phénomènes dynam
 factorisation des BN classiques. De nombreuses applications en séquençage, reconnaissance vocale ou séries temporelles
 motivent leur étude. \cite{perrin2003gene, zweig1998speech}
 
-Dans ce contexte, la bibliothèque \texttt{pyagrum} fournit un cadre de développement en Python pour la modélisation et
+Dans ce contexte, la bibliothèque \texttt{pyAgrum} fournit un cadre de développement en Python pour la modélisation et
 l'inférence dans les réseaux bayésiens. Si elle offre déjà un support partiel pour les réseaux dynamiques d'ordre 2
 (2TBN), elle ne propose pas de mécanisme général pour la représentation ou l'apprentissage de modèles dynamiques d'ordre
 arbitraire $K$.
 
 Le travail présenté dans ce rapport s'inscrit dans le cadre de l'UE LU2IN013, mené en binôme sous la direction de
-Pierre-Henri WUILLEMIN, et visant à étendre les fonctionnalités de \texttt{pyagrum} pour prendre en charge les réseaux
+Pierre-Henri WUILLEMIN, et visant à étendre les fonctionnalités de \texttt{pyAgrum} pour prendre en charge les réseaux
 bayésiens dynamiques d'ordre arbitraire. L'objectif principal a été la conception d'un cadre logiciel pour manipuler de
 tels objets de manière efficace, ainsi que le développement de méthodes d'apprentissage adaptées à ce contexte.
 
@@ -94,10 +94,7 @@ des relations de dépendance probabilistes ou causales.
 
 Sous une interprétation purement statistique, un BN constitue une représentation compacte des relations
 d'indépendance conditionnelle présentes dans les données d'observation et peut être utilisé pour l'inférence des
-distributions conditionnelles et marginales. Si l'on adopte une interprétation causale, le BN devient un réseau
-bayésien causal (CBN), un DAG unique qui permet de raisonner sur les interventions et de mieux comprendre les
-mécanismes sous-jacents du système modélisé. Dans ce cadre, la relation $A \to B$ signifie que $A$ est une cause
-directe de $B$.
+distributions conditionnelles et marginales.
 
 En termes de structure, un nœud $A$ est appelé parent d'un nœud $B$ si une arc $A \to B$ existe, et réciproquement,
 $B$ est un enfant de $A$. L'absence d'un arc entre deux nœuds implique une indépendance conditionnelle entre ces
@@ -108,8 +105,8 @@ variables, étant donné leurs parents respectifs. Cette propriété est formali
 \end{center}
 
 Un réseau bayésien encode une décomposition factorisée de la loi de probabilité jointe en exploitant la structure
-du DAG. Plus précisément, étant donné un ensemble de variables aléatoires $X_1, X_2, \dots, X_n$ organisées selon
-la topologie du DAG, la probabilité jointe se factorise comme suit :
+du DAG. Plus précisément, étant donné un ensemble de variables aléatoires $X_1, X_2, \dots, X_n$, la probabilité
+jointe se factorise comme suit :
 
 $$
     \mathbb{P}(X_1, X_2, \dots, X_n) = \prod_{i=1}^{n} \mathbb{P}(X_i \mid \text{Parents}(X_i))
@@ -312,7 +309,7 @@ L'algorithme suit généralement trois phases successives :
 \end{enumerate}
 
 L'exactitude de ces méthodes dépend fortement de la fiabilité des tests d'indépendance, qui peuvent être
-affectés par le bruit ou la taille limitée des échantillons. Dans certains cas, elles ne permettent pas d'orienter
+affectés par le bruit ou la taille limitée des échantillons. Dans la plupart des cas, elles ne permettent pas d'orienter
 toutes les arêtes, ce qui conduit à l'obtention d'un DAG partiellement orienté (\textit{partially directed acyclic graph},
 PDAG), représentant l'ensemble des structures Markov-équivalentes compatibles avec les données.
 
@@ -339,7 +336,7 @@ le temps de manière structurée.
 
 Les dBN s'appuient généralement sur l'hypothèse de Markov d'ordre 1, c'est-à-dire que l'état du système à l'instant
 $t+1$ ne dépend que de son état à l'instant $t$. Cette approche inclut notamment les \textit{2-Time-slice Bayesian Networks}
-(2TBN), déjà présents dans \texttt{pyagrum}.
+(2TBN), déjà présents dans \texttt{pyAgrum}.
 
 Dans le cadre de notre projet, nous considérons une généralisation de ce modèle, les réseaux bayésiens dynamiques d'ordre $K$
 (KTBN), dans lesquels la dynamique temporelle du système repose sur les $K-1$ dernières tranches temporelles. Plus
@@ -356,7 +353,8 @@ formellement, un KTBN se compose de deux parties :
 Ce modèle repose donc sur deux hypothèses fondamentales :
 
 \begin{enumerate}
-    \item Hypothèse de Markov d'ordre $K-1$ : l'état futur dépend uniquement des $K-1$ derniers états passés ;
+    \item Hypothèse de Markov d'ordre $K-1$ :  l'état futur est indépendant des états plus anciens, conditionnellement
+          aux $K-1$ derniers états. ;
     \item Stationnarité de la transition : la loi de transition est identique pour $t \geq K$, ce qui permet
           de réutiliser la même structure temporelle à chaque pas.
 \end{enumerate}
@@ -366,7 +364,7 @@ lequel chaque nœud représente une variable à un instant donné. Une fois les 
 définies, la $K$-ième est utilisée comme patron de transition, qui peut être "déroulé" de manière répétée pour
 modéliser un processus de longueur arbitraire.
 
-Malgré la expressivité du modèle KTBN, celui-ci reste relativement peu exploré dans la littérature. En dehors
+Malgré l'expressivité du modèle KTBN, celui-ci reste relativement peu exploré dans la littérature. En dehors
 de cas particuliers bien étudiés, tels que les modèles de Markov cachés ou les 2TBN, peu de travaux portent
 sur la modélisation de réseaux bayésiens dynamiques d'ordre $K$ arbitraire. En particulier, les questions liées
 à l'apprentissage automatique de ces structures demeurent encore ouvertes.
@@ -381,29 +379,29 @@ des critères d'adéquation statistique, tels que le score BIC.
 
 \subsection{Objectif de la classe \texttt{KTBN}}
 
-La bibliothèque \texttt{pyagrum} prend en charge les réseaux bayésiens statiques et propose un support partiel
+La bibliothèque \texttt{pyAgrum} prend en charge les réseaux bayésiens statiques et propose un support partiel
 pour les 2TBN. Elle ne permet toutefois pas de représenter ou manipuler directement des réseaux bayésiens
 dynamiques d'ordre $K$ quelconque.
 
 La classe \texttt{KTBN} a pour objectif d'étendre cette fonctionnalité en introduisant une surcouche au-dessus
 d'un objet \texttt{BayesNet}. Cette abstraction gère explicitement la structure temporelle du modèle, permettant
 notamment l'accès aux variables temporelles, la manipulation d'arcs inter-tranches et la génération de trajectoires,
-tout en restant compatible avec l'infrastructure de \texttt{pyagrum}.
+tout en restant compatible avec l'infrastructure de \texttt{pyAgrum}.
 
 
 \subsection{Architecture et conception de la classe \texttt{KTBN}}
 
 \subsubsection{Classe d'abstraction et encapsulation}
 
-La classe \texttt{KTBN} enveloppe un réseau bayésien standard de pyagrum (\texttt{gum.BayesNet}) dans une classe
+La classe \texttt{KTBN} enveloppe un réseau bayésien standard de pyAgrum (\texttt{gum.BayesNet}) dans une classe
 adaptée aux réseaux bayésiens dynamiques. Cette approche offre plusieurs avantages :
 
 \begin{itemize}
     \item Exploitation des fonctionnalités existantes :  L'utilisation d'un \texttt{gum.BayesNet} sous-jacent
-          permet de bénéficier de toutes les fonctionnalités robustes et optimisées de \texttt{pyagrum} (inférence,
+          permet de bénéficier de toutes les fonctionnalités robustes et optimisées de \texttt{pyAgrum} (inférence,
           apprentissage, manipulation des CPT, etc.).
     \item Compatibilité : La possibilité de convertir un \texttt{KTBN} vers un réseau bayésien standard via
-          la méthode \texttt{to\_bn()} permet de réutiliser les fonctionnalités de \texttt{pyagrum}.
+          la méthode \texttt{to\_bn()} permet de réutiliser les fonctionnalités de \texttt{pyAgrum}.
     \item Abstraction temporelle : La classe \texttt{KTBN} masque la complexité interne et propose des méthodes
           simples pour les opérations temporelles.
 \end{itemize}
@@ -411,7 +409,7 @@ adaptée aux réseaux bayésiens dynamiques. Cette approche offre plusieurs avan
 
 \subsubsection{Distinction entre variables temporelles et atemporelles}
 
-Un point clé de notre implémentation est de séparer deux types de variables :
+Un point clé du modèle et de notre implémentation est de séparer deux types de variables :
 
 \begin{itemize}
     \item Variables temporelles : Variables qui changent selon le temps. Pour un ordre $K$, chaque variable
@@ -449,9 +447,9 @@ logique (nom et time-slice séparés) et la représentation technique (nom encod
 
 \subsection{Méthodes de base et interface}
 
-\subsubsection{Adaptation de l'API \texttt{pyagrum}}
+\subsubsection{Adaptation de l'API \texttt{pyAgrum}}
 
-Dans \texttt{pyagrum}, les variables sont manipulées à l'aide de méthodes avec des paramètres simples du type
+Dans \texttt{pyAgrum}, les variables sont manipulées à l'aide de méthodes avec des paramètres simples du type
 \texttt{méthode(nom\_variable)}. Cependant, dans un réseau bayésien dynamique, chaque variable est indexée par son
 time-slice, ce qui nécessite une désambiguïsation temporelle lors de la manipulation.
 
@@ -467,7 +465,7 @@ Cette extension permet d'ajouter des arcs entre différentes tranches temporelle
 
 ce qui crée un arc de la variable \texttt{Humidity} à l'instant $t = 1$ vers la même variable à l'instant $t = 2$.
 
-\subsubsection{Méthodes d'interaction avec \texttt{pyagrum}}
+\subsubsection{Méthodes d'interaction avec \texttt{pyAgrum}}
 
 La classe KTBN expose plusieurs méthodes permettant l'interaction directe avec le réseau bayésien sous-jacent :
 
@@ -485,13 +483,13 @@ temporelles et la logique de la classe \texttt{KTBN}.
 
 \subsubsection{Méthodes spécifiques aux réseaux dynamiques}
 
-Au-delà de l'adaptation de l'interface de \texttt{pyagrum} à la temporalité, la classe \texttt{KTBN} introduit
+Au-delà de l'adaptation de l'interface de \texttt{pyAgrum} à la temporalité, la classe \texttt{KTBN} introduit
 plusieurs méthodes spécifiques aux réseaux bayésiens dynamiques :
 
 \begin{itemize}
     \item \texttt{unroll(n)} : méthode permettant de dérouler le \texttt{KTBN} sur $n$ tranches temporelles.
           Elle génère un BN statique équivalent, compatible avec les outils standards de
-          \texttt{pyagrum}. L'algorithme :
+          \texttt{pyAgrum}. L'algorithme :
           \begin{enumerate}
               \item duplique les variables temporelles pour chaque nouvelle tranche ;
               \item réplique la structure des arcs intra et inter-tranches selon le schéma de transition ;
@@ -511,7 +509,7 @@ plusieurs méthodes spécifiques aux réseaux bayésiens dynamiques :
 
 Afin de permettre la visualisation claire et structurée des réseaux KTBN dans un environnement Jupyter, nous avons
 développé un module dédié, \texttt{KTBN\_notebook}, assurant la prise en charge explicite de ces modèles.
-Inspirée du module \texttt{pyagrum.lib.dynamicBN}, conçu pour organiser les variables des 2TBN par tranches temporelles,
+Inspirée du module \texttt{pyAgrum.lib.dynamicBN}, conçu pour organiser les variables des 2TBN par tranches temporelles,
 notre classe adapte le rendu graphique aux spécificités des KTBN : elle regroupe les variables par tranche temporelle,
 positionne les nœuds de manière cohérente, et distingue visuellement les variables atemporelles lorsqu'elles sont
 présentes. La figure~\ref{fig:KTBN_notebook} compare ces représentations : (\subref{fig:KTBN_notebook:a}) montre un 2TBN
@@ -606,7 +604,7 @@ time-slices. Notre approche repose sur une décomposition du problème en deux s
 
 Cette décomposition s'explique par le fait qu'un KTBN n'est qu'un réseau bayésien classique qui modélise la
 distribution des k premiers pas de temps et de la transition. Cette perspective permet donc de réutiliser
-les algorithmes d'apprentissage existants de \texttt{pyagrum} pour apprendre le KTBN.
+les algorithmes d'apprentissage existants de \texttt{pyAgrum} pour apprendre le KTBN.
 
 \subsubsection{Transformation des données et construction des bases d'apprentissage}
 
@@ -616,7 +614,7 @@ adaptées à l'apprentissage de réseaux bayésiens. Cette transformation est r�
 
 Les données sont représentées sous forme de \texttt{pd.DataFrame} via la bibliothèque \texttt{pandas}, choisie
 pour ses performances, sa souplesse de manipulation et sa compatibilité directe avec les fonctions d'apprentissage
-de \texttt{pyagrum}.
+de \texttt{pyAgrum}.
 
 Processus de transformation :
 
@@ -668,7 +666,7 @@ Processus d'apprentissage avec k connu (\texttt{learn\_ktbn()}) :
           \end{itemize}
 \end{enumerate}
 
-Cette approche permet d'exploiter les algorithmes standards de \texttt{pyagrum} tout en prenant en compte les
+Cette approche permet d'exploiter les algorithmes standards de \texttt{pyAgrum} tout en prenant en compte les
 dépendances temporelles propres aux KTBN.
 
 \subsubsection{Paramétrage de l’apprentissage}
@@ -785,7 +783,8 @@ Architecture et algorithme principal :
 
 
 Cette approche offre une solution pratique pour trouver le k optimal, bien que la recherche exhaustive puisse
-être coûteuse pour de grandes valeurs de \texttt{max\_k}.
+être coûteuse pour de grandes valeurs de \texttt{max\_k}. À notre connaissance, il s'agit du premier algorithme
+d'apprentissage dynamique de l'ordre K.
 
 \section{Expérimentations}
 
@@ -814,7 +813,7 @@ critères quantitatifs.
 \subsection{Évaluation de l'apprentissage avec $K$ fixé}
 
 Lorsque l'ordre temporel $K$ est connu, la classe \texttt{Learner} délègue l'apprentissage de la structure et des
-paramètres du KTBN aux algorithmes standards proposés par \texttt{pyagrum}. Pour évaluer la qualité du modèle appris,
+paramètres du KTBN aux algorithmes standards proposés par \texttt{pyAgrum}. Pour évaluer la qualité du modèle appris,
 nous avons comparé le KTBN estimé au modèle générateur en mesurant à la fois la similarité de leurs structures et
 la proximité de leurs distributions de probabilité. Nous avons analysé l'évolution de ces mesures en fonction de la
 taille de la base d'apprentissage.
@@ -867,7 +866,7 @@ Les résultats ont été moyennés sur 20 tirages aléatoires afin d'assurer la 
 La figure~\ref{fig:f-score} présente l'évolution du F-score (squelettique et orienté) en fonction
 du nombre de trajectoires et de leur longueur, pour différentes valeurs de $K$.
 
-De manière générale, les résultats confirment l'intuition, plus la base d'apprentissage est grande,
+De manière générale, les résultats confirment l'intuition: plus la base d'apprentissage est grande,
 meilleure est la qualité de la structure apprise. Le F-score augmente de façon notable lorsque ces deux dimensions
 augmentent. Cependant, on observe que cette amélioration est moins marquée lorsque $K$ augmente. En effet,
 pour des valeurs plus élevées de $K$, la complexité du modèle sous-jacent augmente, ce qui nécessite davantage de
@@ -877,10 +876,16 @@ avec $K$, suggérant une exigence plus forte en volume de données pour mainteni
 
 \subsubsection{Divergence de Kullback-Leibler}
 
+
 Afin d'évaluer la qualité de l'apprentissage probabiliste, nous avons mesuré la divergence de Kullback-Leibler
 entre la distribution jointe générée par le KTBN appris et celle du KTBN générateur. Cette mesure, notée
-$ D_{KL} (P||Q)$, quantifie la perte d'information induite lorsque le modèle appris $Q$ est utilisé à la place
-de la distribution réelle $P$.
+\( D_{\mathrm{KL}}(P \parallel Q) \), quantifie la perte d'information induite lorsque le modèle appris \( Q \)
+est utilisé à la place de la distribution réelle \( P \). Elle est définie par la formule suivante :
+\[
+    D_{\mathrm{KL}}(P \parallel Q) = \sum_x P(x) \log \frac{P(x)}{Q(x)}
+\]
+où la somme porte sur tous les états \( x \) du système.
+
 
 \textbf{Protocole expérimental}
 
@@ -1079,14 +1084,14 @@ restent bonnes, mais nécessitent des volumes de données significatifs pour
 
 Ce projet avait pour objectif la conception, l'implémentation et la validation
 d'un module complet pour la modélisation et l'apprentissage de réseaux bayésiens
-dynamiques d'ordre $K$ arbitraire, dans le cadre de la bibliothèque \texttt{pyagrum}.
+dynamiques d'ordre $K$ arbitraire, dans le cadre de la bibliothèque \texttt{pyAgrum}.
 Deux composantes principales ont été développées : la classe \texttt{KTBN},
 permettant de représenter explicitement ce type de modèle temporel, et la classe
 \texttt{Learner}, qui automatise l'apprentissage de la structure, des paramètres,
 et de l'ordre temporel à partir de données séquentielles catégorielles.
 
 Lorsque l'ordre $K$ est fourni, \texttt{Learner} s'appuie sur les algorithmes
-d'apprentissage de \texttt{pyagrum} adaptés au contexte temporel pour construire
+d'apprentissage de \texttt{pyAgrum} adaptés au contexte temporel pour construire
 un modèle fidèle à la distribution sous-jacente. En l'absence d'information sur $K$,
 l'algorithme explore plusieurs valeurs et sélectionne celle minimisant le critère BIC,
 assurant ainsi un bon équilibre entre adéquation aux données et simplicité du modèle.
@@ -1098,7 +1103,7 @@ qui parvient à reconstruire efficacement les modèles d'origine dès que la tai
 la base d'apprentissage est suffisante. En particulier, la capacité à estimer
 correctement l'ordre $K$ montre l'utilité du critère BIC dans ce contexte.
 
-L'ensemble du code développé sera intégré de manière officielle dans \texttt{pyagrum},
+L'ensemble du code développé sera intégré de manière officielle dans \texttt{pyAgrum},
 suite à la validation de notre encadrant. Il constitue une contribution concrète à
 la modélisation probabiliste de phénomènes dynamiques, offrant aux utilisateurs de
 la bibliothèque un outil flexible et automatisé pour l'apprentissage de réseaux
